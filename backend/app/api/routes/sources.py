@@ -131,12 +131,14 @@ def get_source(source_id: str, user: User = Depends(current_user), db: Session =
 def delete_source(source_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
     source = owned_source(db, user, source_id)
     dataset = db.query(Dataset).filter(Dataset.data_source_id == source.id).first()
-    if dataset:
-        import shutil
-
-        shutil.rmtree(get_settings().datasets_dir / dataset.id, ignore_errors=True)
+    files = get_settings().datasets_dir / dataset.id if dataset else None
     db.delete(source)
     db.commit()
+    # Remove files only once the database delete has committed, so a failed delete never orphans metadata.
+    if files is not None:
+        import shutil
+
+        shutil.rmtree(files, ignore_errors=True)
 
 
 @router.get("/{source_id}/tables", response_model=list[TableOut])

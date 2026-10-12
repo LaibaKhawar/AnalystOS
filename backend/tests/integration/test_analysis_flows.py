@@ -514,3 +514,62 @@ def test_top_one_question_keeps_full_ranking_and_report_lookup(
     assert client.get(f"/api/analyses/{analysis['id']}/report", headers=auth).status_code == 404
     created = client.post(f"/api/analyses/{analysis['id']}/report", headers=auth).json()
     assert client.get(f"/api/analyses/{analysis['id']}/report", headers=auth).json()["id"] == created["id"]
+
+
+def test_whole_table_statistic_answered_from_profile_without_sql(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, agent, upload, ask, data_dir: Path, db
+) -> None:
+    import pandas as pd
+
+    source = upload(data_dir / "sales.csv")
+    llm = agent.script(
+        plan=[
+            {
+                "goal": "Average revenue",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "title": "Profile revenue",
+                        "tool": "profile_dataset",
+                        "args": {"columns": ["revenue"]},
+                    }
+                ],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "Column revenue" in t, 1)],
+    )
+    analysis = ask(source["id"], "What is the average revenue per row?")
+    assert analysis["status"] == "completed"
+    plan_prompt = llm.calls[0][1][-1]["content"]
+    assert "mean=" in plan_prompt and "EXACT over all rows" in plan_prompt  # profile stats are in context
+    assert db.query(SQLExecution).filter(SQLExecution.analysis_id == analysis["id"]).count() == 0
+    expected = pd.read_csv(data_dir / "sales.csv")["revenue"].mean()
+    findings = client.get(f"/api/analyses/{analysis['id']}/findings", headers=auth).json()
+    stat = next(f for f in findings if f["statement"].startswith("Column revenue"))
+    assert abs(stat["values"]["mean"] - expected) < 0.01
+    claims = client.get(f"/api/analyses/{analysis['id']}/claims", headers=auth).json()
+    assert claims and all(c["status"] == "verified" for c in claims if c["numbers"])
+
+
+def test_profile_tool_marks_sampled_profiles_and_rejects_unknown_columns(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, agent, upload, ask, data_dir: Path, db
+) -> None:
+    from app.db.models import TableMetadata
+
+    source = upload(data_dir / "saas_subscriptions.csv")
+    table = db.query(TableMetadata).filter(TableMetadata.data_source_id == source["id"]).one()
+    table.profile = {**table.profile, "sampled": True, "sample_rows": 500}
+    db.commit()
+    agent.script(
+        plan=[
+            {
+                "goal": "MRR",
+                "steps": [{"id": "s1", "title": "Profile", "tool": "profile_dataset", "args": {"columns": ["mrrr"]}}],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "Column mrr" in t, 1)],
+    )
+    analysis = ask(source["id"], "What is the average MRR?")
+    findings = client.get(f"/api/analyses/{analysis['id']}/findings", headers=auth).json()
+    stat = next(f for f in findings if f["statement"].startswith("Column mrr"))
+    assert "estimated from a 500-row sample" in stat["statement"]  # auto-corrected mrrr -> mrr, labelled estimate

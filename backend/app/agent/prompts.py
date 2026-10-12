@@ -22,6 +22,10 @@ Rules:
 - Periods use labels like "2026-Q3", "2026-07", "2026", "2026-01-01..2026-03-31", or "latest_quarter",
   "previous_quarter", "latest_month", "previous_month". Check them against the date range in the schema.
 - Include at least one create_chart step when a visual helps (time trend -> line, categories -> bar).
+- The schema already contains profile statistics for every column (row and non-null counts, missing %, sum,
+  mean, median, std, min, max, distinct counts, duplicated rows). When the question asks for one of these over
+  the WHOLE table (no filter, group or period), plan ONE profile_dataset step with "columns" set to the
+  relevant columns instead of SQL or aggregation tools. With any filter, grouping or period, compute with tools.
 - Do not add filters, exclusions or conditions the question did not ask for (for example excluding churned
   customers or a date range). If one seems necessary, keep it out of the main computation and list it in
   "assumptions" instead.
@@ -75,6 +79,8 @@ Return ONLY JSON:
  "recommendations": [{{"text": str, "citations": [str]}}],
  "caveats": [str],
  "follow_up_questions": [str]}}
+The headline is one sentence that directly answers the question, including the key number when there is one
+(for example "The average revenue is 813.29", not "Average revenue calculation").
 The summary is 1-3 sentences that directly answer the question."""
 
 REWRITE_SYSTEM = f"""Some sentences in a drafted analytics answer contained numbers that do not appear in the

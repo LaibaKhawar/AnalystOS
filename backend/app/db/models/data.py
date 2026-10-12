@@ -34,7 +34,9 @@ class DataSource(TimestampMixin, Base):
     restricted_columns: Mapped[list[Any]] = mapped_column(default=list)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    dataset: Mapped[Dataset | None] = relationship(back_populates="data_source", uselist=False)
+    dataset: Mapped[Dataset | None] = relationship(
+        back_populates="data_source", uselist=False, cascade="all, delete-orphan", passive_deletes=True
+    )
     tables: Mapped[list[TableMetadata]] = relationship(
         back_populates="data_source", cascade="all, delete-orphan", order_by="TableMetadata.name"
     )

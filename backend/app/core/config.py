@@ -131,6 +131,11 @@ class Settings(BaseSettings):
     def artifacts_dir(self) -> Path:
         return self.data_dir / "artifacts"
 
+    @field_validator("data_dir", mode="after")
+    @classmethod
+    def _absolute_data_dir(cls, value: Path) -> Path:
+        return value.expanduser().resolve()
+
     def ensure_dirs(self) -> None:
         for path in (self.uploads_dir, self.datasets_dir, self.artifacts_dir):
             path.mkdir(parents=True, exist_ok=True)

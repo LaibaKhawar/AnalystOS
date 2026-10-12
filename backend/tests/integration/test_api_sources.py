@@ -146,3 +146,59 @@ def test_health_and_metrics(client: TestClient, auth: dict[str, str]) -> None:
     assert "analystos_tool_calls_total" in metrics
     dashboard = client.get("/api/dashboard", headers=auth).json()
     assert {"datasets", "analyses", "total_cost_usd"} <= set(dashboard)
+
+
+def test_delete_source_with_analyses(
+    client: TestClient, auth: dict[str, str], agent, upload, ask, data_dir: Path
+) -> None:  # type: ignore[no-untyped-def]
+    from tests.integration.test_analysis_flows import cite_findings
+
+    source = upload(data_dir / "saas_subscriptions.csv")
+    agent.script(
+        plan=[
+            {
+                "goal": "count",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "title": "Plans",
+                        "tool": "aggregate_metric",
+                        "args": {"metric": {"agg": "count"}, "group_by": ["plan"]},
+                    }
+                ],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "Highest" in t, 1)],
+    )
+    analysis = ask(source["id"], "How many customers per plan?")
+    assert analysis["status"] == "completed"
+    client.post(f"/api/analyses/{analysis['id']}/report", headers=auth)
+    response = client.delete(f"/api/sources/{source['id']}", headers=auth)
+    assert response.status_code == 204, response.text
+    assert client.get(f"/api/sources/{source['id']}", headers=auth).status_code == 404
+    assert client.get(f"/api/analyses/{analysis['id']}", headers=auth).status_code == 404
+    assert all(s["id"] != source["id"] for s in client.get("/api/sources", headers=auth).json())
+
+
+def test_failed_delete_keeps_dataset_files(
+    client: TestClient,
+    auth: dict[str, str],
+    upload,
+    data_dir: Path,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+) -> None:
+    from app.db.models import DatasetVersion
+
+    source = upload(data_dir / "marketing_performance.csv")
+    version = db.query(DatasetVersion).join(DatasetVersion.dataset).filter_by(data_source_id=source["id"]).one()
+    assert Path(version.storage_path).is_absolute() and Path(version.storage_path).exists()
+
+    def boom(self) -> None:  # type: ignore[no-untyped-def]
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("sqlalchemy.orm.Session.commit", boom)
+    with pytest.raises(RuntimeError):
+        client.delete(f"/api/sources/{source['id']}", headers=auth)
+    monkeypatch.undo()
+    assert Path(version.storage_path).exists()  # files survive a failed delete

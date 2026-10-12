@@ -67,6 +67,8 @@ def introspect_source(db: Session, source: DataSource, engine: SQLAlchemyEngine)
             sampled = true_rows > len(frame)
             profile.row_count = true_rows
             profile.table["row_count"] = true_rows
+            profile.table["sampled"] = sampled
+            profile.table["sample_rows"] = len(frame)
             if sampled:
                 profile.table["warnings"].append(
                     f"Profile computed on a sample of {len(frame):,} of {true_rows:,} rows"

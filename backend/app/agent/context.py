@@ -182,11 +182,15 @@ class ToolContext:
 
 
 def _clean_values(values: dict[str, Any]) -> dict[str, Any]:
+    """JSON-safe finding values: numpy/pandas scalars become Python numbers, NaN/inf are dropped."""
+    from app.services.datasources.base import to_jsonable
+
     out: dict[str, Any] = {}
-    for key, value in values.items():
+    for key, raw in values.items():
+        value = to_jsonable(raw)
         if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
             continue
-        out[key] = round(value, 6) if isinstance(value, float) else value
+        out[str(key)] = round(value, 6) if isinstance(value, float) else value
     return out
 
 
@@ -195,7 +199,15 @@ def render_schema(source: DataSource, *, max_examples: int = 4) -> str:
     lines = [f"Data source: {source.name} (type: {source.kind})"]
     for table in source.tables:
         profile = table.profile or {}
-        lines.append(f"\nTABLE {table.name}  ({table.row_count:,} rows; display name: {table.display_name})")
+        basis = (
+            f"column statistics ESTIMATED from a {profile.get('sample_rows', 0):,}-row sample"
+            if profile.get("sampled")
+            else "column statistics are EXACT over all rows"
+        )
+        lines.append(
+            f"\nTABLE {table.name}  ({table.row_count:,} rows; {profile.get('duplicate_rows', 0):,} duplicated rows; "
+            f"display name: {table.display_name}; {basis})"
+        )
         for column in table.columns:
             stats = column.stats or {}
             parts = [f"  - {column.name}: {column.inferred_type}, role={column.role}"]
@@ -211,6 +223,11 @@ def render_schema(source: DataSource, *, max_examples: int = 4) -> str:
                 parts.append(f"missing={stats['missing_pct']}%")
             if column.inferred_type in {"integer", "float"} and stats.get("min") is not None:
                 parts.append(f"range=[{fmt_number(stats.get('min'))}, {fmt_number(stats.get('max'))}]")
+                parts.append(
+                    f"non_null={fmt_number(stats.get('count'))} sum={fmt_number(stats.get('sum'))} "
+                    f"mean={fmt_number(stats.get('mean'))} median={fmt_number(stats.get('median'))} "
+                    f"std={fmt_number(stats.get('std'))}"
+                )
                 if stats.get("unit"):
                     parts.append(f"unit={stats['unit']}")
             elif column.inferred_type in {"date", "datetime"} and stats.get("min"):
