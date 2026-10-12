@@ -1,6 +1,6 @@
 # Developer shortcuts. Backend commands run in backend/.venv (python3.11 -m venv backend/.venv).
 PY := backend/.venv/bin/python
-.PHONY: setup dev-db api worker frontend test lint typecheck models eval data sandbox up down
+.PHONY: setup dev-db api worker frontend test lint typecheck models compare-models eval data sandbox up down
 
 setup:            ## install backend + frontend dependencies and build the sandbox image
 	python3.11 -m venv backend/.venv && backend/.venv/bin/pip install -e "backend[dev]"
@@ -41,6 +41,12 @@ data:             ## regenerate the deterministic benchmark datasets
 models:           ## create the 16K-context Ollama models used by default
 	ollama create analystos-qwen3-14b -f ollama/Modelfile.qwen3-14b
 	ollama create analystos-qwen3-8b -f ollama/Modelfile.qwen3-8b
+
+compare-models:   ## free model comparison: two more local models through Ollama (one run each)
+	ollama pull qwen3:4b && ollama create analystos-qwen3-4b -f ollama/Modelfile.qwen3-4b
+	ollama pull llama3.1:8b && ollama create analystos-llama3.1-8b -f ollama/Modelfile.llama3.1-8b
+	cd backend && .venv/bin/python -m evals.run --model analystos-qwen3-4b --notes "qwen3-4b"
+	cd backend && .venv/bin/python -m evals.run --model analystos-llama3.1-8b --notes "llama3.1-8b"
 
 eval:             ## run the evaluation suite against the configured LLM
 	cd backend && .venv/bin/python -m evals.run

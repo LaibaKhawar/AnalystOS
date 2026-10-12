@@ -106,7 +106,7 @@ export function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || undefined}>
           <AuthProvider>
             <TooltipProvider delayDuration={200}>
               <AppRoutes />

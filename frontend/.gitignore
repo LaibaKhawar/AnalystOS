@@ -27,3 +27,4 @@ dist-ssr
 playwright-report
 test-results
 coverage
+dist-replay

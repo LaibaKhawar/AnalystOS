@@ -7,12 +7,20 @@ import './index.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { installReplay, REPLAY, type ReplayInfo } from './api/replay'
+import { ReplayBanner } from './components/replay/ReplayBanner'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element missing')
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+function render(replay: ReplayInfo | null) {
+  createRoot(root!).render(
+    <StrictMode>
+      <App />
+      {replay && <ReplayBanner info={replay} />}
+    </StrictMode>,
+  )
+}
+
+if (REPLAY) void installReplay().then(render)
+else render(null)
