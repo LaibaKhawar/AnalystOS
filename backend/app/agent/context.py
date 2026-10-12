@@ -15,6 +15,7 @@ from app.db.models import AnalysisEvent, DataSource, Finding, ResultTable, Table
 from app.db.session import session_scope
 from app.services.datasources.base import QueryEngine
 from app.services.sandbox.docker_runner import DockerSandbox
+from app.services.semantic.relationships import Relationship
 from app.services.sql.validator import Catalog
 
 log = get_logger(__name__)
@@ -82,6 +83,7 @@ class ToolContext:
     finding_counter: int = 0
     findings: list[Finding] = field(default_factory=list)
     step_results: dict[str, str] = field(default_factory=dict)  # step id -> result table id
+    metrics: list[Any] = field(default_factory=list)  # MetricDefinition rows for this source
     report_requested: bool = False
     report_title: str | None = None
 
@@ -194,6 +196,19 @@ def _clean_values(values: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def render_metrics(metrics: list[Any]) -> str:
+    if not metrics:
+        return ""
+    lines = ["\nSAVED METRICS (the team's official definitions; compute them with compute_metric, never redefine):"]
+    for m in metrics:
+        extra = f"; filters {m.filters}" if m.filters else ""
+        lines.append(
+            f"  - {m.name} ({m.label}) on {m.table_name} = {m.expression}{extra}"
+            + (f". {m.description}" if m.description else "")
+        )
+    return "\n".join(lines)
+
+
 def render_schema(source: DataSource, *, max_examples: int = 4) -> str:
     """Compact schema + profile for prompts. Never includes raw rows; examples are sanitized and PII is masked."""
     lines = [f"Data source: {source.name} (type: {source.kind})"]
@@ -246,6 +261,11 @@ def render_schema(source: DataSource, *, max_examples: int = 4) -> str:
             lines.append(", ".join(parts))
         if profile.get("duplicate_rows"):
             lines.append(f"  note: {profile['duplicate_rows']} duplicated rows")
+    relationships = (source.options or {}).get("relationships") or []
+    if relationships:
+        lines.append("\nRELATIONSHIPS (join keys; use these for JOINs in execute_sql):")
+        for rel in relationships:
+            lines.append(f"  - {Relationship(**rel).describe()}")
     return "\n".join(lines)
 
 

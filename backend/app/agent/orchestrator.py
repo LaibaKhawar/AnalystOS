@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.agent.context import EventEmitter, ToolContext, column_guide, render_schema
+from app.agent.context import EventEmitter, ToolContext, column_guide, render_metrics, render_schema
 from app.agent.llm.base import LLMProvider
 from app.agent.llm.pricing import estimate_cost
 from app.agent.llm.structured import CallLog
@@ -38,7 +38,7 @@ from app.core.errors import AnalystError, LLMError
 from app.core.logging import analysis_id_var, get_logger
 from app.core.metrics import ANALYSIS_LATENCY, TOOL_RETRIES
 from app.db.base import utcnow
-from app.db.models import Analysis, AnalysisStep, Chart, Conversation, DataSource, Message
+from app.db.models import Analysis, AnalysisStep, Chart, Conversation, DataSource, Message, MetricDefinition
 from app.services.datasources.factory import catalog_for, engine_for
 from app.services.sandbox.docker_runner import DockerSandbox
 from app.services.viz.charts import recommend_type
@@ -114,7 +114,8 @@ class AnalysisRunner:
                 sandbox=self.sandbox,
                 events=events,
             )
-            schema_text = render_schema(source)
+            ctx.metrics = self.db.query(MetricDefinition).filter(MetricDefinition.data_source_id == source.id).all()
+            schema_text = render_schema(source) + render_metrics(ctx.metrics)
             conversation_text = render_conversation(conversation, analysis.id)
             planner = Planner(self.llm, self.tools, call_log, self.settings.agent_max_steps)
 

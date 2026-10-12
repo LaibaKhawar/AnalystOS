@@ -9,6 +9,7 @@ from app.agent.tools.metric_tools import (
     AnalyzeSegments,
     CalculateCorrelation,
     ComparePeriods,
+    ComputeMetric,
     ComputeStatistics,
 )
 from app.agent.tools.output_tools import (
@@ -27,6 +28,7 @@ ALL_TOOLS: list[type[Tool]] = [
     InspectSchema,
     ProfileDataset,
     AggregateMetric,
+    ComputeMetric,
     ComparePeriods,
     AnalyzeSegments,
     ComputeStatistics,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 import pandas as pd
+import sqlglot
 from pydantic import BaseModel, Field
 from sqlglot import exp
 
@@ -25,7 +26,7 @@ from app.agent.tools.common import (
     series_findings,
 )
 from app.services.analytics import stats
-from app.services.analytics.querybuilder import MetricSpec
+from app.services.analytics.querybuilder import Filter, MetricSpec
 
 Grain = Literal["day", "week", "month", "quarter", "year"]
 
@@ -572,6 +573,135 @@ class CalculateCorrelation(Tool):
         )
         return ToolResult(
             summary=f"result_id={stored.id}\n{compact_table([c['name'] for c in columns], rows)}",
+            result_table_id=stored.id,
+            findings=findings,
+        )
+
+
+class ComputeMetricInput(TableArgs):
+    name: str = Field(..., description="Name of a SAVED METRIC from the schema")
+    group_by: list[str] = Field(default_factory=list, description="Optional dimension columns (max 2)")
+    time_grain: Grain | None = None
+    date_column: str | None = None
+    period: str | None = None
+    limit: int = Field(25, ge=1, le=500)
+
+
+class ComputeMetric(Tool):
+    name = "compute_metric"
+    description = (
+        "Compute a SAVED METRIC (the team's official definition from the schema) overall, by dimension(s) or "
+        "over time, with optional filters and period. Output columns: 'period' (with time_grain), the group_by "
+        "columns, and the metric name."
+    )
+    Input = ComputeMetricInput
+
+    def run(self, ctx: ToolContext, args: BaseModel) -> ToolResult:
+        assert isinstance(args, ComputeMetricInput)
+        definition = next((m for m in ctx.metrics if m.name.lower() == args.name.lower()), None)
+        if definition is None:
+            from app.services.sql.validator import suggest
+
+            options = suggest(args.name, [m.name for m in ctx.metrics])
+            raise ToolError(
+                "invalid_arguments",
+                f"No saved metric named '{args.name}'." + (f" Did you mean: {', '.join(options)}?" if options else ""),
+                {"available": [m.name for m in ctx.metrics]},
+            )
+        if len(args.group_by) > 2:
+            raise ToolError("invalid_arguments", "group_by supports at most 2 columns")
+        table = ctx.table(definition.table_name)
+        qb = builder(ctx, table)
+        expression = sqlglot.parse_one(definition.expression, read=ctx.engine.dialect)
+        projections: list[exp.Expr] = []
+        group: list[exp.Expr] = []
+        conditions: list[exp.Expr] = []
+        date_column = require_date_column(ctx, table, args.date_column) if (args.time_grain or args.period) else None
+        if args.time_grain and date_column:
+            projections.append(qb.time_bucket(date_column, args.time_grain).as_("period"))
+            group.append(exp.column("period"))
+        for dim in args.group_by:
+            projections.append(qb.col(dim))
+            group.append(qb.col(dim))
+        projections.append(expression.as_(definition.name))
+        period = None
+        if args.period and date_column:
+            period = resolve_period(ctx, table, args.period, date_column)
+            conditions.append(qb.period_condition(date_column, period))
+        filters = [Filter.model_validate(f) for f in definition.filters] + list(args.filters)
+        order: list[exp.Expr] = (
+            [exp.Ordered(this=exp.column("period"))]
+            if args.time_grain
+            else [exp.Ordered(this=exp.column(definition.name), desc=True)]
+            if group
+            else []
+        )
+        sql = qb.select(
+            projections,
+            filters=filters,
+            extra_conditions=conditions,
+            group_by=group or None,
+            order_by=order or None,
+            limit=max(args.limit, 25) if group and not args.time_grain else None,
+        )
+        result, sql_id = query(ctx, sql, internal=bool(args.time_grain))
+        names = [c["name"] for c in result.columns]
+        data = frame(result)
+        label = f"{definition.label} ({definition.name} = {definition.expression})"
+        context = filters_text(filters) + (f" in {period.label}" if period else "")
+        entities = filter_entities(filters)
+        if not group:
+            value = data.iloc[0, 0] if not data.empty else None
+            findings = [
+                FindingDraft(
+                    kind="value",
+                    statement=f"Saved metric {label}{context}: {fmt_number(value)}",
+                    values={"value": value},
+                    formula=definition.expression,
+                    periods=[period.label] if period else [],
+                    entities=entities,
+                    payload={"metric": definition.name},
+                )
+            ]
+        elif args.time_grain and not args.group_by:
+            findings = series_findings(
+                data,
+                "period",
+                definition.name,
+                f"Saved metric {definition.label}",
+                context=filters_text(filters),
+                entities=entities,
+            )
+        elif len(args.group_by) == 1:
+            findings = ranking_findings(
+                data,
+                args.group_by[0],
+                definition.name,
+                f"saved metric {definition.label}",
+                context=context,
+                periods=[period.label] if period else [],
+                extra_entities=entities,
+            )
+        else:
+            from app.agent.tools.common import rows_findings
+
+            findings = rows_findings(f"Saved metric {definition.label}{context}", names, result.rows, limit=40)
+        stored = ctx.save_result_table(
+            f"{definition.label} by "
+            f"{', '.join(([args.time_grain] if args.time_grain else []) + args.group_by) or 'total'}",
+            result.columns,
+            result.rows,
+            truncated=result.truncated,
+            source={
+                "type": "sql",
+                "sql_execution_id": sql_id,
+                "sql": result.executed_sql,
+                "metric_definition": {"name": definition.name, "expression": definition.expression},
+            },
+        )
+        return ToolResult(
+            summary=f"result_id={stored.id}\n{compact_table(names, result.rows, 24)}",
+            data={"row_count": result.row_count},
             result_table_id=stored.id,
             findings=findings,
         )

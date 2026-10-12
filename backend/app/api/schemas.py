@@ -112,6 +112,35 @@ class ShareOut(BaseModel):
     created_at: datetime
 
 
+class MetricFilterIn(BaseModel):
+    column: str
+    op: str = "="
+    value: Any = None
+
+
+class MetricIn(BaseModel):
+    name: str = Field(min_length=2, max_length=63)
+    label: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    table: str
+    expression: str = Field(min_length=3, max_length=2000)
+    format: Literal["number", "currency", "percent"] = "number"
+    filters: list[MetricFilterIn] = Field(default_factory=list)
+
+
+class MetricOut(ORM):
+    id: str
+    data_source_id: str
+    table_name: str
+    name: str
+    label: str
+    description: str | None
+    expression: str
+    format: str
+    filters: list[Any]
+    created_at: datetime
+
+
 class ConnectionIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     kind: Literal["postgresql", "mysql", "sqlite"]

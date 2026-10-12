@@ -26,6 +26,8 @@ Rules:
   mean, median, std, min, max, distinct counts, duplicated rows). When the question asks for one of these over
   the WHOLE table (no filter, group or period), plan ONE profile_dataset step with "columns" set to the
   relevant columns instead of SQL or aggregation tools. With any filter, grouping or period, compute with tools.
+- If the question refers to a SAVED METRIC (by name or label), use compute_metric with that name. Never re-derive a
+  saved metric with your own formula.
 - Do not add filters, exclusions or conditions the question did not ask for (for example excluding churned
   customers or a date range). If one seems necessary, keep it out of the main computation and list it in
   "assumptions" instead.

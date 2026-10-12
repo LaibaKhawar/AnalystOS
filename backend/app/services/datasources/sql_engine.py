@@ -95,6 +95,22 @@ class SQLAlchemyEngine(QueryEngine):
         except SQLAlchemyError as exc:
             raise QueryFailed(_safe_error(exc)) from exc
 
+    def foreign_keys(self) -> list[tuple[str, str, str, str]]:
+        """Declared single-column foreign keys: (child_table, child_column, parent_table, parent_column)."""
+        inspector = inspect(self.engine)
+        found: list[tuple[str, str, str, str]] = []
+        try:
+            names = inspector.get_table_names(schema=self.schema)
+            for table in names:
+                for fk in inspector.get_foreign_keys(table, schema=self.schema):
+                    if len(fk.get("constrained_columns", [])) == 1 and fk.get("referred_table"):
+                        found.append(
+                            (table, fk["constrained_columns"][0], fk["referred_table"], fk["referred_columns"][0])
+                        )
+        except SQLAlchemyError:
+            return []
+        return found
+
     def execute(self, sql: str, *, max_rows: int, timeout_seconds: float) -> QueryResult:
         started = time.perf_counter()
         try:

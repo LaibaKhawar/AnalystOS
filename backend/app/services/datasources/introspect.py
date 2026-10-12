@@ -18,6 +18,7 @@ from app.services.ingestion.naming import quote_ident
 from app.services.ingestion.service import persist_tables
 from app.services.ingestion.types import LoadedTable
 from app.services.profiling.profiler import profile_table
+from app.services.semantic.relationships import Relationship, infer_in_duckdb, merge
 
 log = get_logger(__name__)
 SAMPLE_ROWS = 50_000
@@ -83,6 +84,15 @@ def introspect_source(db: Session, source: DataSource, engine: SQLAlchemyEngine)
                     row_count=true_rows,
                 )
             )
+        duck_names = {t.name: f"t_{i}" for i, t in enumerate(loaded)}
+        inferred = infer_in_duckdb(con, {t.name: t.columns for t in loaded}, sampled=True, local_names=duck_names)
     finally:
         con.close()
+    known = {t.name for t in loaded}
+    declared = [
+        Relationship(child, ccol, parent, pcol, 1.0, "declared")
+        for child, ccol, parent, pcol in engine.foreign_keys()
+        if child in known and parent in known
+    ]
+    source.options = {**(source.options or {}), "relationships": [r.as_dict() for r in merge(declared, inferred)]}
     return persist_tables(db, source, loaded, profiles, None)

@@ -23,6 +23,7 @@ from app.services.ingestion.naming import quote_ident, sql_string, to_identifier
 from app.services.ingestion.types import LoadedTable
 from app.services.profiling.profiler import TableProfile, profile_table
 from app.services.semantic.interpreter import interpret_table
+from app.services.semantic.relationships import infer_in_duckdb
 
 log = get_logger(__name__)
 SUPPORTED = {".csv": "csv", ".tsv": "csv", ".txt": "csv", ".xlsx": "xlsx", ".xlsm": "xlsx"}
@@ -96,6 +97,7 @@ def build_dataset_files(
                 f"COPY {quote_ident(table.name)} TO {sql_string(str(parquet_dir / (table.name + '.parquet')))} "
                 "(FORMAT parquet)"
             )
+        relationships = infer_in_duckdb(con, {t.name: t.columns for t in tables}) if len(tables) > 1 else []
         con.execute("CHECKPOINT")
     finally:
         con.close()
@@ -109,7 +111,8 @@ def build_dataset_files(
                 "details": t.details,
             }
             for t in tables
-        ]
+        ],
+        "relationships": [r.as_dict() for r in relationships],
     }
     return tables, profiles, report
 
@@ -168,6 +171,7 @@ def ingest_upload(
     db.flush()
     dataset.current_version_id = version.id
     persist_tables(db, source, tables, profiles, version.id)
+    source.options = {**(source.options or {}), "relationships": report.get("relationships", [])}
     source.status = "ready"
     db.commit()
     db.refresh(dataset)
