@@ -32,7 +32,7 @@ services:
   # Builds the image that runs model-generated Python. The worker starts throwaway containers from it;
   # this service only builds the image and exits immediately.
   sandbox:
-    build: ./sandbox
+    build: {context: ., dockerfile: sandbox/Dockerfile}
     image: analystos-sandbox:latest
     entrypoint: ["python", "-c", "print('sandbox image ready')"]
     network_mode: none
@@ -64,7 +64,8 @@ services:
   worker:
     image: analystos-backend:latest
     <<: *backend-env
-    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    # Thread pool: analyses mostly wait on the LLM, and one process can expose a single metrics port (9100).
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--pool=threads", "--concurrency=4"]
     user: root  # needs the Docker socket to start sandbox containers; generated code never runs here
     volumes:
       - appdata:/data

@@ -1,0 +1,4 @@
+# Repository-root build context (used by the sandbox image): send only what the image needs.
+**
+!sandbox/Dockerfile
+!backend/app/services/sandbox/runner.py

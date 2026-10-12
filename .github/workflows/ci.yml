@@ -42,7 +42,7 @@ jobs:
         with: {python-version: "3.11", cache: pip, cache-dependency-path: backend/pyproject.toml}
       - run: pip install -e ".[dev]"
       - name: Build sandbox image
-        run: docker build -t analystos-sandbox:latest ../sandbox
+        run: docker build -t analystos-sandbox:latest -f ../sandbox/Dockerfile ..
       - name: Verify migrations apply cleanly
         env:
           DATABASE_URL: postgresql+psycopg://analystos:analystos@localhost:5434/analystos_test
@@ -103,6 +103,6 @@ jobs:
       - uses: docker/build-push-action@v6
         with: {context: backend, push: false, tags: "analystos-backend:ci", cache-from: type=gha, cache-to: "type=gha,mode=max"}
       - uses: docker/build-push-action@v6
-        with: {context: sandbox, push: false, tags: "analystos-sandbox:ci"}
+        with: {context: ., file: sandbox/Dockerfile, push: false, tags: "analystos-sandbox:ci"}
       - uses: docker/build-push-action@v6
         with: {context: frontend, push: false, tags: "analystos-frontend:ci"}

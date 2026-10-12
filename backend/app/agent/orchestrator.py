@@ -38,10 +38,11 @@ from app.core.config import get_settings
 from app.core.errors import AnalystError, LLMError
 from app.core.logging import analysis_id_var, get_logger
 from app.core.metrics import ANALYSIS_LATENCY, TOOL_RETRIES
+from app.core.tracing import span
 from app.db.base import utcnow
 from app.db.models import Analysis, AnalysisStep, Chart, Conversation, DataSource, Message, MetricDefinition
 from app.services.datasources.factory import catalog_for, engine_for
-from app.services.sandbox.docker_runner import DockerSandbox
+from app.services.sandbox.factory import get_sandbox
 from app.services.viz.charts import recommend_type
 
 log = get_logger(__name__)
@@ -75,19 +76,26 @@ def render_conversation(conversation: Conversation, current_analysis_id: str) ->
 
 
 class AnalysisRunner:
-    def __init__(
-        self, db: Session, llm: LLMProvider, *, sandbox: DockerSandbox | None = None, emit_events: bool = True
-    ) -> None:
+    def __init__(self, db: Session, llm: LLMProvider, *, sandbox: Any = None, emit_events: bool = True) -> None:
         self.db = db
         self.llm = llm
         self.settings = get_settings()
-        self.sandbox = sandbox or DockerSandbox()
+        self.sandbox = sandbox or get_sandbox()
         self.emit_events = emit_events
         self.tools = build_registry()
         self.catalog_text = tool_catalog(self.tools)
 
     # ------------------------------------------------------------------------------------------------
     def run(self, analysis_id: str) -> Analysis:
+        with span("analysis", **{"analysis.id": analysis_id}) as current:
+            result = self._run(analysis_id)
+            current.set_attribute("analysis.status", result.status)
+            current.set_attribute("llm.calls", result.llm_calls)
+            current.set_attribute("llm.input_tokens", result.input_tokens)
+            current.set_attribute("llm.output_tokens", result.output_tokens)
+            return result
+
+    def _run(self, analysis_id: str) -> Analysis:
         analysis = self.db.get(Analysis, analysis_id)
         if analysis is None:
             raise AnalystError(f"Analysis {analysis_id} not found")

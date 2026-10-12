@@ -80,6 +80,10 @@ class Settings(BaseSettings):
 
     # Python sandbox
     sandbox_enabled: bool = True
+    sandbox_backend: Literal["docker", "modal"] = "docker"
+    # Optional OCI runtime for sandbox containers, e.g. "runsc" (gVisor) when installed on the Docker host
+    sandbox_runtime: str | None = None
+    modal_sandbox_app: str = "analystos-sandbox"
     sandbox_image: str = "analystos-sandbox:latest"
     sandbox_cpus: float = 1.0
     sandbox_memory_mb: int = 512
@@ -91,7 +95,9 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str | None = None
     metrics_enabled: bool = True
 
-    @field_validator("pricing_file", "embedding_base_url", "otel_exporter_otlp_endpoint", mode="before")
+    @field_validator(
+        "pricing_file", "embedding_base_url", "otel_exporter_otlp_endpoint", "sandbox_runtime", mode="before"
+    )
     @classmethod
     def _blank_is_none(cls, value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value

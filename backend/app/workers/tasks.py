@@ -26,9 +26,9 @@ def publish_sandbox_status() -> None:
         import redis
 
         from app.core.config import get_settings
-        from app.services.sandbox.docker_runner import DockerSandbox
+        from app.services.sandbox.factory import get_sandbox
 
-        ok, detail = DockerSandbox().available()
+        ok, detail = get_sandbox().available()
         redis.Redis.from_url(get_settings().redis_url, socket_timeout=2).set(
             SANDBOX_STATUS_KEY, json.dumps({"ok": ok, "detail": detail}), ex=900
         )

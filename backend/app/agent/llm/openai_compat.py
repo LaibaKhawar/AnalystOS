@@ -17,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import LLMError
 from app.core.logging import get_logger
 from app.core.metrics import LLM_CALLS, LLM_LATENCY, LLM_TOKENS
+from app.core.tracing import span
 
 log = get_logger(__name__)
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -44,6 +45,24 @@ class OpenAICompatibleProvider(LLMProvider):
         return f"{base}/chat/completions", {"Authorization": f"Bearer {s.llm_api_key}"}
 
     def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        purpose: str,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResponse:
+        with span(f"llm.{purpose}", **{"llm.model": self.model, "llm.purpose": purpose}) as current:
+            response = self._complete(
+                messages, purpose=purpose, json_mode=json_mode, temperature=temperature, max_tokens=max_tokens
+            )
+            current.set_attribute("llm.input_tokens", response.usage.input_tokens)
+            current.set_attribute("llm.output_tokens", response.usage.output_tokens)
+            current.set_attribute("llm.latency_ms", response.latency_ms)
+            return response
+
+    def _complete(
         self,
         messages: list[dict[str, Any]],
         *,

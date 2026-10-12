@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.metrics import QUERY_DURATION, SQL_BLOCKED
+from app.core.tracing import span
 from app.db.models import SQLExecution
 from app.services.datasources.base import QueryEngine, QueryFailed, QueryResult, QueryTimeout
 from app.services.sql.validator import Catalog, SQLLimits, ValidationResult, validate_sql
@@ -39,7 +40,7 @@ class SQLRun:
         return context
 
 
-def run_sql(
+def _run_sql(
     db: Session | None,
     engine: QueryEngine,
     catalog: Catalog,
@@ -97,3 +98,34 @@ def run_sql(
         db.flush()
         run.record_id = record.id
     return run
+
+
+def run_sql(
+    db: Session | None,
+    engine: QueryEngine,
+    catalog: Catalog,
+    sql: str,
+    *,
+    analysis_id: str | None = None,
+    tool_execution_id: str | None = None,
+    max_rows: int | None = None,
+    row_cap: int | None = None,
+) -> SQLRun:
+    with span("sql.execute", **{"db.system": engine.dialect}) as current:
+        run = _run_sql(
+            db,
+            engine,
+            catalog,
+            sql,
+            analysis_id=analysis_id,
+            tool_execution_id=tool_execution_id,
+            max_rows=max_rows,
+            row_cap=row_cap,
+        )
+        current.set_attribute("sql.status", run.status)
+        if run.result is not None:
+            current.set_attribute("sql.rows", run.result.row_count)
+            current.set_attribute("sql.duration_ms", run.result.duration_ms)
+        if run.error_kind:
+            current.set_attribute("sql.error_kind", run.error_kind)
+        return run

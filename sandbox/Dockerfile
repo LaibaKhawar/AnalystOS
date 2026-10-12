@@ -16,7 +16,9 @@ RUN pip install --no-cache-dir \
  && rm -rf /root/.cache \
  && python -c "import matplotlib.pyplot"  # warm the font cache at build time
 
-COPY runner.py /opt/runner/runner.py
+# Built from the repository root: docker build -f sandbox/Dockerfile .
+# The runner is shared with the Modal sandbox backend, so it lives in the backend package.
+COPY backend/app/services/sandbox/runner.py /opt/runner/runner.py
 RUN chmod 0555 /opt/runner/runner.py && mkdir -p /work && chmod 0755 /work
 
 USER 65534:65534

@@ -66,11 +66,14 @@ def _serialise(result, max_rows):
             "type": "table",
             "columns": [{"name": c, "type": str(t)} for c, t in zip(frame.columns, frame.dtypes)],
             "rows": rows,
-            "row_count": int(len(frame)),
+            "row_count": len(frame),
             "truncated": len(frame) > max_rows,
         }
     if isinstance(result, dict):
-        return {"type": "dict", "value": {str(k): _serialise_scalar(v, max_rows) for k, v in list(result.items())[:500]}}
+        return {
+            "type": "dict",
+            "value": {str(k): _serialise_scalar(v, max_rows) for k, v in list(result.items())[:500]},
+        }
     if isinstance(result, (list, tuple, np.ndarray)):
         return {"type": "list", "value": [_serialise_scalar(v, max_rows) for v in list(result)[:max_rows]]}
     return {"type": "value", "value": _jsonable(result)}
@@ -121,8 +124,10 @@ def main():
     import numpy as np
     import pandas as pd
 
-    dfs = {name: _with_datetimes(pd.read_parquet(os.path.join("/work/input", path)))
-           for name, path in manifest["tables"].items()}
+    dfs = {
+        name: _with_datetimes(pd.read_parquet(os.path.join("/work/input", path)))
+        for name, path in manifest["tables"].items()
+    }
     artifacts = []
 
     def save_chart(fig=None, title="chart"):
@@ -141,32 +146,45 @@ def main():
 
     try:
         compiled = compile(code, "<analysis>", "exec")
-        exec(compiled, namespace)  # noqa: S102 - this IS the sandbox
-    except BaseException as exc:  # noqa: BLE001
+        exec(compiled, namespace)
+    except BaseException as exc:
         tb = traceback.extract_tb(exc.__traceback__)
         user_frames = [f for f in tb if f.filename == "<analysis>"]
         line = user_frames[-1].lineno if user_frames else None
-        _write({
-            "status": "error",
-            "error_type": type(exc).__name__,
-            "error_message": str(exc)[:1000],
-            "line": line,
-            "artifacts": artifacts,
-        })
+        _write(
+            {
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc)[:1000],
+                "line": line,
+                "artifacts": artifacts,
+            }
+        )
         print(f"{type(exc).__name__}: {str(exc)[:500]}", file=sys.stderr)
         return 1
 
     if "result" not in namespace:
-        _write({"status": "error", "error_type": "MissingResult",
+        _write(
+            {
+                "status": "error",
+                "error_type": "MissingResult",
                 "error_message": "The code must assign its final answer to a variable named `result`",
-                "artifacts": artifacts})
+                "artifacts": artifacts,
+            }
+        )
         return 1
     try:
         payload = {"status": "success", "result": _serialise(namespace["result"], max_rows), "artifacts": artifacts}
         _write(payload)
-    except Exception as exc:  # noqa: BLE001
-        _write({"status": "error", "error_type": "SerializationError", "error_message": str(exc)[:500],
-                "artifacts": artifacts})
+    except Exception as exc:
+        _write(
+            {
+                "status": "error",
+                "error_type": "SerializationError",
+                "error_message": str(exc)[:500],
+                "artifacts": artifacts,
+            }
+        )
         return 1
     return 0
 

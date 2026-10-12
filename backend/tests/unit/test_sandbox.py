@@ -130,3 +130,51 @@ def test_dates_and_decimals_arrive_as_native_pandas_types(tmp_path: Path) -> Non
     result = DockerSandbox().run("result = df.groupby(df['date'].dt.month)['revenue'].sum()", {"sales": path})
     assert result.ok, result.error_message
     assert result.result["rows"] == [[3, 10.5], [4, 5.0]]
+
+
+def test_sandbox_runtime_is_passed_to_docker(monkeypatch: pytest.MonkeyPatch, table: dict[str, Path]) -> None:
+    """SANDBOX_RUNTIME=runsc (gVisor) must reach containers.create; checked with a fake Docker client."""
+    captured: dict[str, object] = {}
+
+    class FakeContainer:
+        attrs = {"State": {"OOMKilled": False}}
+
+        def put_archive(self, *_: object) -> None: ...
+        def start(self) -> None: ...
+        def wait(self, timeout: int) -> dict[str, int]:
+            return {"StatusCode": 0}
+
+        def logs(self, **_: object) -> bytes:
+            return b""
+
+        def reload(self) -> None: ...
+        def get_archive(self, _: str) -> tuple[list[bytes], dict[str, object]]:
+            raise RuntimeError("no output")
+
+        def remove(self, **_: object) -> None: ...
+
+    class FakeClient:
+        class containers:
+            @staticmethod
+            def create(*_: object, **kwargs: object) -> FakeContainer:
+                captured.update(kwargs)
+                return FakeContainer()
+
+        class volumes:
+            @staticmethod
+            def create(**_: object) -> object:
+                return type("V", (), {"name": "v", "remove": lambda self, **_: None})()
+
+        def ping(self) -> bool:
+            return True
+
+        class images:
+            @staticmethod
+            def get(_: str) -> None: ...
+
+    sandbox = DockerSandbox()
+    monkeypatch.setattr(sandbox.settings, "sandbox_runtime", "runsc")
+    sandbox._client = FakeClient()
+    result = sandbox.run("result = 1", table)
+    assert captured["runtime"] == "runsc" and captured["network_mode"] == "none" and captured["read_only"] is True
+    assert result.limits["runtime"] == "runsc"

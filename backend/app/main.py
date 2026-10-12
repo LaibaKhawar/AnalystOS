@@ -17,6 +17,7 @@ from app.api.routes import metrics as metric_routes
 from app.core.config import get_settings
 from app.core.errors import AnalystError
 from app.core.logging import configure_logging, get_logger, request_id_var
+from app.core.tracing import configure_tracing
 
 log = get_logger(__name__)
 
@@ -24,6 +25,7 @@ log = get_logger(__name__)
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
+    configure_tracing("analystos-api")
     app = FastAPI(
         title="AnalystOS API",
         version="1.0.0",

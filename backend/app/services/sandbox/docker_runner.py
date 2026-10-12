@@ -26,6 +26,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.metrics import SANDBOX_RUNS
+from app.core.tracing import span
 from app.services.sandbox.static_check import StaticCheckResult, check_code
 
 log = get_logger(__name__)
@@ -103,6 +104,13 @@ class DockerSandbox:
         return True, "ok"
 
     def run(self, code: str, tables: dict[str, Path], *, max_rows: int = 5000) -> SandboxResult:
+        with span("sandbox.run", **{"sandbox.backend": type(self).__name__}) as current:
+            result = self._run(code, tables, max_rows=max_rows)
+            current.set_attribute("sandbox.status", result.status)
+            current.set_attribute("sandbox.duration_ms", result.duration_ms)
+            return result
+
+    def _run(self, code: str, tables: dict[str, Path], *, max_rows: int = 5000) -> SandboxResult:
         settings = self.settings
         limits = {
             "cpus": settings.sandbox_cpus,
@@ -142,6 +150,7 @@ class DockerSandbox:
             "pids": settings.sandbox_pids_limit,
             "read_only_rootfs": True,
             "user": SANDBOX_UID,
+            "runtime": settings.sandbox_runtime or "runc",
         }
         ok, reason = self.available()
         if not ok:
@@ -174,6 +183,7 @@ class DockerSandbox:
                 volumes={volume.name: {"bind": "/work", "mode": "rw"}},
                 environment={},
                 ipc_mode="private",
+                **({"runtime": settings.sandbox_runtime} if settings.sandbox_runtime else {}),
                 labels={"app": "analystos-sandbox"},
                 detach=True,
             )

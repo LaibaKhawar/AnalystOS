@@ -5,7 +5,7 @@ PY := backend/.venv/bin/python
 setup:            ## install backend + frontend dependencies and build the sandbox image
 	python3.11 -m venv backend/.venv && backend/.venv/bin/pip install -e "backend[dev]"
 	cd frontend && npm install
-	docker build -t analystos-sandbox:latest sandbox
+	docker build -t analystos-sandbox:latest -f sandbox/Dockerfile .
 
 dev-db:           ## start Postgres (5434) and Redis (6380) for local development
 	docker run -d --name analystos-devdb -e POSTGRES_USER=analystos -e POSTGRES_PASSWORD=analystos \
@@ -46,7 +46,7 @@ eval:             ## run the evaluation suite against the configured LLM
 	cd backend && .venv/bin/python -m evals.run
 
 sandbox:
-	docker build -t analystos-sandbox:latest sandbox
+	docker build -t analystos-sandbox:latest -f sandbox/Dockerfile .
 
 up:               ## full stack in Docker
 	docker compose up --build

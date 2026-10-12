@@ -18,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 from app.core.errors import AnalystError
 from app.core.logging import get_logger
 from app.core.metrics import TOOL_CALLS, TOOL_LATENCY
+from app.core.tracing import span
 from app.db.models import ToolExecution
 
 if TYPE_CHECKING:
@@ -140,6 +141,26 @@ class ToolRunner:
         self.tools = tools
 
     def execute(
+        self,
+        tool_name: str,
+        raw_args: dict[str, Any],
+        *,
+        step_id: str | None = None,
+        attempt: int = 1,
+        retry_of: str | None = None,
+        retry_reason: str | None = None,
+    ) -> ToolOutcome:
+        with span(f"tool.{tool_name}", **{"tool.attempt": attempt, "tool.retry": retry_of is not None}) as current:
+            outcome = self._execute(
+                tool_name, raw_args, step_id=step_id, attempt=attempt, retry_of=retry_of, retry_reason=retry_reason
+            )
+            current.set_attribute("tool.status", "success" if outcome.ok else "error")
+            current.set_attribute("tool.execution_id", outcome.execution_id)
+            if outcome.error is not None:
+                current.set_attribute("tool.error_kind", outcome.error.kind)
+            return outcome
+
+    def _execute(
         self,
         tool_name: str,
         raw_args: dict[str, Any],

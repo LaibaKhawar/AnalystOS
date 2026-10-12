@@ -40,10 +40,12 @@ dependencies = [
   "sse-starlette>=2.1",
   "pyyaml>=6.0",
   "email-validator>=2.2",
+  "opentelemetry-exporter-otlp-proto-http>=1.26",
 ]
 
 [project.optional-dependencies]
 pdf = ["weasyprint>=62"]
+modal = ["modal>=1.0"]
 dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
@@ -76,6 +78,8 @@ ignore = ["S101", "S608", "B008", "RUF012", "S311", "S603", "S607"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S108", "PT011", "PT018", "E501"]
 "evals/**" = ["S105"]
+# Executed inside the sandbox (standalone script, untyped by design), not application code.
+"app/services/sandbox/runner.py" = ["B905", "S102", "BLE001", "UP038", "SIM105"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -85,7 +89,7 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 check_untyped_defs = true
 disallow_untyped_defs = true
-exclude = ["alembic/", "tests/", "evals/"]
+exclude = ["alembic/", "tests/", "evals/", "app/services/sandbox/runner.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -94,6 +98,7 @@ markers = [
   "docker: requires a running Docker daemon (sandbox tests)",
   "postgres: requires a PostgreSQL test database",
   "mysql: requires a MySQL test database",
+  "modal: requires Modal credentials (real cloud sandboxes)",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]
 

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+
 from celery import Celery
-from celery.signals import worker_process_init
+from celery.signals import worker_init, worker_process_init
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -22,9 +24,22 @@ celery_app.conf.update(
 )
 
 
+@worker_init.connect
+def _start_metrics_server(**_: object) -> None:
+    """Expose the worker's Prometheus metrics (tool, LLM, SQL, sandbox) on :9100."""
+    if settings.metrics_enabled:
+        from prometheus_client import start_http_server
+
+        with contextlib.suppress(OSError):  # another worker on this host already serves the port
+            start_http_server(9100)
+
+
 @worker_process_init.connect
 def _init_worker(**_: object) -> None:
     configure_logging(settings.log_level, settings.log_json)
+    from app.core.tracing import configure_tracing
     from app.workers.tasks import publish_sandbox_status
+
+    configure_tracing("analystos-worker")
 
     publish_sandbox_status()

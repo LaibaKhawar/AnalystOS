@@ -10,6 +10,7 @@ from app.agent.llm.structured import CallLog, generate_structured
 from app.agent.prompts import PLANNER_SYSTEM, REPAIR_SYSTEM, RESCOPE_SYSTEM, REVISER_SYSTEM
 from app.agent.schemas import Plan, PlanStep, Repair, Revision
 from app.agent.tools.base import Tool, ToolError
+from app.core.tracing import span
 
 
 class Planner:
@@ -33,8 +34,9 @@ class Planner:
                 ),
             },
         ]
-        plan = generate_structured(self.llm, messages, Plan, purpose="plan", log=self.log, max_tokens=3000)
-        return self.sanitize(plan)
+        with span("plan"):
+            plan = generate_structured(self.llm, messages, Plan, purpose="plan", log=self.log, max_tokens=3000)
+            return self.sanitize(plan)
 
     def sanitize(self, plan: Plan) -> Plan:
         seen: set[str] = set()

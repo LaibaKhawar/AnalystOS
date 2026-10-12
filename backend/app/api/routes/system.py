@@ -9,7 +9,7 @@ from app.api.deps import current_user
 from app.core.config import get_settings
 from app.db.models import Analysis, DataSource, Report, User
 from app.db.session import get_db
-from app.services.sandbox.docker_runner import DockerSandbox
+from app.services.sandbox.factory import get_sandbox
 
 router = APIRouter(tags=["system"])
 
@@ -78,7 +78,7 @@ def _sandbox_status() -> tuple[bool, str]:
             return bool(data["ok"]), f"reported by worker: {data['detail']}"
     except Exception:  # noqa: S110 - fall back to local check
         pass
-    return DockerSandbox().available()
+    return get_sandbox().available()
 
 
 @router.get("/api/dashboard")
