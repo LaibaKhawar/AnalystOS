@@ -139,3 +139,23 @@ def test_failed_scheduled_run_raises_alert_and_run_now(  # type: ignore[no-untyp
     alert = schedule_service.create_alerts(db, db.get(Schedule, schedule_id), analysis)
     assert alert is not None and alert.severity == "high" and alert.delivery_status == "not_configured"
     assert db.query(Alert).count() == 1
+
+
+def test_schedule_update_rules_status_and_cleanup(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, upload, data_dir: Path, db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.models import Conversation
+
+    monkeypatch.setattr("app.api.routes.schedules.enqueue_scheduled", lambda a, s: None)
+    sales = upload(data_dir / "sales.csv")
+    saas = upload(data_dir / "saas_subscriptions.csv")
+    body = {"data_source_id": sales["id"], "name": "Daily", "question": "Total revenue?", "interval_minutes": 1440}
+    schedule = client.post("/api/schedules", headers=auth, json=body).json()
+    moved = client.put(f"/api/schedules/{schedule['id']}", headers=auth, json={**body, "data_source_id": saas["id"]})
+    assert moved.status_code == 422 and "cannot be changed" in moved.json()["error"]["message"]
+    client.post(f"/api/schedules/{schedule['id']}/run", headers=auth)
+    listed = client.get("/api/schedules", headers=auth).json()
+    assert listed[0]["last_status"] == "queued"
+    assert client.get("/api/alerts/unread-count", headers=auth).json() == {"unread": 0}
+    assert client.delete(f"/api/schedules/{schedule['id']}", headers=auth).status_code == 204
+    assert db.get(Conversation, schedule["conversation_id"]) is None

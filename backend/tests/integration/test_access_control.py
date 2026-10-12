@@ -105,3 +105,37 @@ def test_evaluation_runs_visible_to_owner_or_system(client: TestClient, auth: di
     db.commit()
     assert {r["suite"] for r in client.get("/api/evaluations", headers=auth).json()} == {"core", "mine"}
     assert {r["suite"] for r in client.get("/api/evaluations", headers=other).json()} == {"core"}
+
+
+def test_demoted_viewer_cannot_ask_on_own_source(
+    client: TestClient, auth: dict[str, str], upload, data_dir: Path, db
+) -> None:  # type: ignore[no-untyped-def]
+    owner = _register(client, "olivia@example.com")
+    with (data_dir / "saas_subscriptions.csv").open("rb") as handle:
+        created = client.post("/api/sources/upload", headers=owner, files={"file": ("saas.csv", handle)}).json()
+    assert created["access"] == "manage" and created["owned"] is True  # upload response carries access
+    conversation = client.post("/api/conversations", headers=owner, json={"data_source_id": created["id"]}).json()
+    user = db.query(User).filter(User.email == "olivia@example.com").one()
+    client.patch(f"/api/admin/users/{user.id}/role", headers=auth, json={"role": "viewer"})
+    assert client.get(f"/api/sources/{created['id']}", headers=owner).json()["access"] == "read"
+    ask = client.post(f"/api/conversations/{conversation['id']}/ask", headers=owner, json={"question": "Total MRR?"})
+    assert ask.status_code == 403
+    assert client.delete(f"/api/sources/{created['id']}", headers=owner).status_code == 403
+
+
+def test_metric_filter_operators_are_validated(
+    client: TestClient, auth: dict[str, str], upload, data_dir: Path
+) -> None:  # type: ignore[no-untyped-def]
+    source = upload(data_dir / "sales.csv")
+    response = client.post(
+        f"/api/sources/{source['id']}/metrics",
+        headers=auth,
+        json={
+            "name": "x_metric",
+            "label": "X",
+            "table": "sales",
+            "expression": "SUM(revenue)",
+            "filters": [{"column": "region", "op": "; DROP", "value": "Lahore"}],
+        },
+    )
+    assert response.status_code == 422

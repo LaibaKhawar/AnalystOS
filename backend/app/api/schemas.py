@@ -115,7 +115,7 @@ class ShareOut(BaseModel):
 
 class MetricFilterIn(BaseModel):
     column: str
-    op: str = "="
+    op: Literal["=", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "contains", "is_null", "not_null"] = "="
     value: Any = None
 
 
@@ -165,6 +165,7 @@ class ScheduleOut(ORM):
     next_run_at: datetime
     last_run_at: datetime | None
     last_analysis_id: str | None
+    last_status: str | None = None  # status of the last run's analysis
     created_at: datetime
 
 

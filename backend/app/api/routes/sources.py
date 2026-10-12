@@ -70,7 +70,7 @@ def upload(
     )
     source = db.get(DataSource, dataset.data_source_id)
     assert source is not None
-    return _source_out(db, source)
+    return _source_out(db, source, user)
 
 
 @router.post("/connections", response_model=SourceOut, status_code=201)
@@ -98,7 +98,7 @@ def create_connection(
     db.flush()
     _refresh(db, source)
     db.commit()
-    return _source_out(db, source)
+    return _source_out(db, source, user)
 
 
 def _refresh(db: Session, source: DataSource) -> None:
@@ -127,7 +127,7 @@ def refresh_connection(source_id: str, user: User = Depends(current_user), db: S
         raise ValidationFailed("Uploaded datasets are profiled at upload time")
     _refresh(db, source)
     db.commit()
-    return _source_out(db, source)
+    return _source_out(db, source, user)
 
 
 @router.get("/{source_id}", response_model=SourceOut)

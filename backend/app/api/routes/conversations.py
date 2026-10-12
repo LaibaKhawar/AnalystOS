@@ -82,6 +82,7 @@ def analyses(conversation_id: str, user: User = Depends(current_user), db: Sessi
 def ask(
     conversation_id: str, body: AskIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Analysis:
+    require_role(user, "analyst", "admin")
     conversation = owned_conversation(db, user, conversation_id)
     owned_source(db, user, conversation.data_source_id, need="ask")
     hit(f"ask:{user.id}", get_settings().questions_per_hour, 3600)

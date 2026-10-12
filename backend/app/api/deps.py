@@ -24,9 +24,14 @@ ACCESS_LEVELS = {"read": 0, "ask": 1, "manage": 2}
 
 
 def source_access(db: Session, user: User, source: DataSource) -> str | None:
-    """Effective access to a source: 'manage' (owner/admin), 'ask', 'read', or None."""
-    if source.user_id == user.id or user.role == "admin":
+    """Effective access to a source: 'manage' (owner/admin), 'ask', 'read', or None.
+
+    A viewer's role caps their access at 'read', even on sources they own (for example after being demoted).
+    """
+    if user.role == "admin":
         return "manage"
+    if source.user_id == user.id:
+        return "read" if user.role == "viewer" else "manage"
     share = (
         db.query(SourceShare).filter(SourceShare.data_source_id == source.id, SourceShare.user_id == user.id).first()
     )

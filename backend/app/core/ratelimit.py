@@ -47,4 +47,5 @@ def hit(key: str, limit: int, window_seconds: int) -> None:
         return
     if count > limit:
         retry = window_seconds - int(time.time()) % window_seconds
-        raise RateLimited(f"Too many requests. Try again in {retry} seconds.", details={"retry_after_seconds": retry})
+        wait = f"{retry} seconds" if retry < 90 else f"{(retry + 59) // 60} minutes"
+        raise RateLimited(f"Too many requests. Try again in {wait}.", details={"retry_after_seconds": retry})
