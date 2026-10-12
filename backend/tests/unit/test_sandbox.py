@@ -115,3 +115,18 @@ def test_no_leftover_containers() -> None:
     client = docker.from_env()
     assert client.containers.list(all=True, filters={"label": "app=analystos-sandbox"}) == []
     assert client.volumes.list(filters={"label": "app=analystos-sandbox"}) == []
+
+
+@pytestmark_docker
+@pytest.mark.docker
+def test_dates_and_decimals_arrive_as_native_pandas_types(tmp_path: Path) -> None:
+    import duckdb
+
+    path = tmp_path / "t.parquet"
+    duckdb.connect().execute(
+        f"COPY (SELECT DATE '2026-03-05' AS date, 10.5 AS revenue UNION ALL SELECT DATE '2026-04-02', 5.0) "
+        f"TO '{path}' (FORMAT parquet)"
+    )
+    result = DockerSandbox().run("result = df.groupby(df['date'].dt.month)['revenue'].sum()", {"sales": path})
+    assert result.ok, result.error_message
+    assert result.result["rows"] == [[3, 10.5], [4, 5.0]]

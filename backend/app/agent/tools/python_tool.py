@@ -28,6 +28,7 @@ class ExecutePythonInput(BaseModel):
 class ExecutePython(Tool):
     name = "execute_python"
     description = (
+        "Data is ALREADY LOADED: never read files (read_csv etc. are blocked). Date columns are pandas datetime64. "
         "Run Python in an isolated sandbox (no network, no files, 30s, 512MB). Tables are available as "
         "dfs['name'] (and df when only one is loaded). Allowed: pandas, numpy, scipy, sklearn, "
         "statsmodels, matplotlib (use save_chart(fig, title)). Assign the answer to `result` "

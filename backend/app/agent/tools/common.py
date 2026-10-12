@@ -196,9 +196,25 @@ def series_findings(
     context: str = "",
     limit: int = 36,
     entities: list[str] | None = None,
+    additive: bool = False,
 ) -> list[FindingDraft]:
     findings: list[FindingDraft] = []
     data = data.sort_values(period_col).reset_index(drop=True)
+    if additive and len(data) > 1:
+        values = pd.to_numeric(data[value_col], errors="coerce")
+        first, last = str(data[period_col].iloc[0])[:10], str(data[period_col].iloc[-1])[:10]
+        total = float(values.sum())
+        findings.append(
+            FindingDraft(
+                kind="value",
+                statement=f"{label}{context} summed over all {len(data)} periods from {first} to {last}: "
+                f"{fmt_number(total)} (average per period {fmt_number(float(values.mean()))})",
+                values={"total": total, "average_per_period": float(values.mean()), "periods": len(data)},
+                formula=" + ".join(fmt_number(v) for v in values.head(12)) + (" + ..." if len(values) > 12 else ""),
+                periods=[first, last],
+                entities=entities or [],
+            )
+        )
     tail = data.tail(limit).reset_index(drop=True)
     previous = None
     for _, row in tail.iterrows():

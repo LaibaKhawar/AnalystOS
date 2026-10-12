@@ -122,7 +122,13 @@ class AggregateMetric(Tool):
             data = completed.rename(value_label).rename_axis("period").reset_index()
             result.rows = [[p, None if pd.isna(v) else float(v)] for p, v in data.itertuples(index=False)]
             findings = series_findings(
-                data, "period", value_label, label, context=filters_text(args.filters), entities=entities
+                data,
+                "period",
+                value_label,
+                label,
+                context=filters_text(args.filters),
+                entities=entities,
+                additive=args.metric.agg in {"sum", "count"},
             )
         elif not args.time_grain and len(args.group_by) == 1:
             findings = ranking_findings(

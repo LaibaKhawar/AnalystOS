@@ -84,6 +84,24 @@ def _serialise_scalar(value, max_rows):
     return _jsonable(value)
 
 
+def _with_datetimes(frame):
+    """Parquet DATE columns arrive as Python date objects and DECIMAL columns as Decimal objects; convert them to
+    datetime64 and float64 so ordinary pandas operations (.dt, arithmetic, aggregation) work."""
+    import datetime as dt
+    import decimal
+
+    import pandas as pd
+
+    for column in frame.columns:
+        if frame[column].dtype == object:
+            sample = frame[column].dropna().head(20)
+            if len(sample) and all(isinstance(v, (dt.date, dt.datetime)) for v in sample):
+                frame[column] = pd.to_datetime(frame[column], errors="coerce")
+            elif len(sample) and all(isinstance(v, decimal.Decimal) for v in sample):
+                frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("float64")
+    return frame
+
+
 def _write(payload):
     with open(os.path.join(OUT, "result.json"), "w", encoding="utf-8") as handle:
         json.dump(payload, handle, default=str)
@@ -103,7 +121,8 @@ def main():
     import numpy as np
     import pandas as pd
 
-    dfs = {name: pd.read_parquet(os.path.join("/work/input", path)) for name, path in manifest["tables"].items()}
+    dfs = {name: _with_datetimes(pd.read_parquet(os.path.join("/work/input", path)))
+           for name, path in manifest["tables"].items()}
     artifacts = []
 
     def save_chart(fig=None, title="chart"):

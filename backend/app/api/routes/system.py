@@ -45,7 +45,7 @@ def status(_: User = Depends(current_user)) -> dict[str, object]:
         llm = "ok" if response.status_code < 400 else f"http {response.status_code}"
     except Exception:
         llm = "unreachable"
-    sandbox_ok, sandbox_reason = DockerSandbox().available()
+    sandbox_ok, sandbox_reason = _sandbox_status()
     return {
         "llm": {"status": llm, "provider": settings.llm_provider, "model": settings.llm_model},
         "sandbox": {
@@ -61,6 +61,24 @@ def status(_: User = Depends(current_user)) -> dict[str, object]:
         "sql": {"max_rows": settings.sql_max_rows, "timeout_seconds": settings.sql_timeout_seconds},
         "worker_mode": "inline" if settings.run_analyses_inline else "celery",
     }
+
+
+def _sandbox_status() -> tuple[bool, str]:
+    """Prefer the worker's published view (it owns the Docker connection); fall back to a local check."""
+    import json
+
+    try:
+        import redis
+
+        from app.workers.tasks import SANDBOX_STATUS_KEY
+
+        raw = redis.Redis.from_url(get_settings().redis_url, socket_timeout=1).get(SANDBOX_STATUS_KEY)
+        if raw:
+            data = json.loads(raw)
+            return bool(data["ok"]), f"reported by worker: {data['detail']}"
+    except Exception:  # noqa: S110 - fall back to local check
+        pass
+    return DockerSandbox().available()
 
 
 @router.get("/api/dashboard")

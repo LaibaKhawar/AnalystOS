@@ -67,3 +67,19 @@ def test_call_log_accumulates() -> None:
     log.record(LLMResponse("x", "m", Usage(10, 5), 100), "plan")
     log.record(LLMResponse("x", "m", Usage(3, 2), 50), "plan")
     assert (log.usage.input_tokens, log.usage.output_tokens, log.calls) == (13, 7, 2)
+
+
+def test_cors_origins_accept_comma_separated_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3100, https://app.example.com")
+    assert Settings().cors_origins == ["http://localhost:3100", "https://app.example.com"]  # type: ignore[call-arg]
+
+
+def test_blank_optional_settings_are_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("PRICING_FILE", "")
+    monkeypatch.setenv("EMBEDDING_BASE_URL", "")
+    settings = Settings()  # type: ignore[call-arg]
+    assert settings.pricing_file is None and settings.embedding_base_url is None

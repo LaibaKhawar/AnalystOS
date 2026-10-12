@@ -33,7 +33,7 @@ DEFAULT_PRICES: dict[str, tuple[float, float]] = {
 def price_table() -> dict[str, tuple[float, float]]:
     prices = dict(DEFAULT_PRICES)
     path: Path | None = get_settings().pricing_file
-    if path and path.exists():
+    if path and path.is_file():
         data = yaml.safe_load(path.read_text()) or {}
         for model, entry in data.items():
             prices[str(model)] = (float(entry["input"]), float(entry["output"]))

@@ -25,3 +25,6 @@ celery_app.conf.update(
 @worker_process_init.connect
 def _init_worker(**_: object) -> None:
     configure_logging(settings.log_level, settings.log_json)
+    from app.workers.tasks import publish_sandbox_status
+
+    publish_sandbox_status()

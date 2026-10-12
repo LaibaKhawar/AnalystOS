@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _INSECURE_SECRETS = {"", "change-me", "changeme", "secret", "dev"}
 
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(..., description="JWT signing key")
     encryption_key: str = Field(..., description="Fernet key used to encrypt stored DB credentials")
     access_token_ttl_minutes: int = 60 * 12
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173", "http://localhost:3000"]
     allow_registration: bool = True
 
     # LLM provider (OpenAI-compatible endpoint: OpenAI, Azure OpenAI, Ollama, vLLM, LM Studio...)
@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Observability
     otel_exporter_otlp_endpoint: str | None = None
     metrics_enabled: bool = True
+
+    @field_validator("pricing_file", "embedding_base_url", "otel_exporter_otlp_endpoint", mode="before")
+    @classmethod
+    def _blank_is_none(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("cors_origins", mode="before")
     @classmethod

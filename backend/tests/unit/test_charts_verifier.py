@@ -67,7 +67,8 @@ F2 = _finding("F2", {"value": 1234567.89, "share_pct": 41.2}, ["North"])
 def _verify(text: str, citations: list[str], kind: str = "facts"):  # type: ignore[no-untyped-def]
     draft = {"summary": [], "facts": [], "interpretations": [], "recommendations": []}
     draft[kind] = [{"text": text, "citations": citations}]
-    return verify_answer(draft, [F1, F2], exempt_phrases=[]).claims[0]
+    known = {"Lahore", "Karachi", "North", "South"}  # category values of the dataset
+    return verify_answer(draft, [F1, F2], exempt_phrases=[], known_entities=known).claims[0]
 
 
 @pytest.mark.parametrize(
@@ -81,6 +82,9 @@ def _verify(text: str, citations: list[str], kind: str = "facts"):  # type: igno
         ("Lahore declined 17.3% in Q1.", "removed"),  # wrong period
         ("Karachi declined by 17.3%.", "removed"),  # wrong entity
         ("Review the top 3 stores in Lahore.", "no_numbers"),
+        ("The revenue change was -141,860 between Q2 and Q3.", "verified"),  # filter-scoped finding, no entity named
+        ("South generated $1.23M.", "removed"),  # North's number attached to another known region
+        ("The rate is conversions / clicks * 100% for the channel.", "no_numbers"),  # formula constant
     ],
 )
 def test_claim_verification(text: str, status: str) -> None:

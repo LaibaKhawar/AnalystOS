@@ -199,7 +199,9 @@ class AnalysisRunner:
             sentence_count = sum(len(draft_dict[k]) for k in ("summary", "facts", "interpretations", "recommendations"))
             events.emit("status", f"Verifying {sentence_count} claims against computed results", phase="verification")
             exempt = self._exempt_phrases(analysis.question, ctx)
-            report = verify_answer(draft_dict, ctx.findings, exempt_phrases=exempt)
+            report = verify_answer(
+                draft_dict, ctx.findings, exempt_phrases=exempt, known_entities=self._known_entities(ctx)
+            )
             self._repair_unsupported(report, ctx, call_log, exempt, events)
             persist_claims(self.db, analysis, report, ctx.findings)
             charts_ok, charts_total = verify_charts(self.db, analysis.id)
@@ -420,7 +422,13 @@ class AnalysisRunner:
                 continue
             original = rejected[item.index]
             check = verify_sentence(
-                item.text, item.citations, by_label, section=original.section, kind=original.kind, exempt_phrases=exempt
+                item.text,
+                item.citations,
+                by_label,
+                section=original.section,
+                kind=original.kind,
+                exempt_phrases=exempt,
+                known_entities=self._known_entities(ctx),
             )
             if check.status in {"verified", "qualified"}:
                 check.notes.append(f"rewritten after verification rejected: {original.text[:200]}")
@@ -485,6 +493,16 @@ class AnalysisRunner:
                 )
                 return
 
+    @staticmethod
+    def _known_entities(ctx: ToolContext) -> set[str]:
+        """Category values of the data source (top values of dimension columns) for the verifier's entity check."""
+        values: set[str] = set()
+        for table in ctx.tables:
+            for column in table.columns:
+                if column.role == "dimension" and not column.is_pii:
+                    values.update(str(v["value"]) for v in (column.stats or {}).get("top_values", []) if v.get("value"))
+        return values
+
     def _exempt_phrases(self, question: str, ctx: ToolContext) -> list[str]:
         phrases: list[str] = []
         for finding in ctx.findings:
@@ -525,9 +543,13 @@ class AnalysisRunner:
         analysis.input_tokens = call_log.usage.input_tokens
         analysis.output_tokens = call_log.usage.output_tokens
         analysis.llm_calls = call_log.calls
-        analysis.cost_usd = estimate_cost(
-            analysis.model or "", call_log.usage.input_tokens, call_log.usage.output_tokens
-        )
+        try:
+            analysis.cost_usd = estimate_cost(
+                analysis.model or "", call_log.usage.input_tokens, call_log.usage.output_tokens
+            )
+        except Exception:  # cost accounting must never break finishing an analysis
+            log.warning("cost_estimation_failed", model=analysis.model)
+            analysis.cost_usd = 0.0
         ANALYSIS_LATENCY.labels(status=status).observe(analysis.latency_ms / 1000)
 
 

@@ -28,6 +28,7 @@ _DATE_LIKE = re.compile(
     r"\b\d{4}-\d{2}(?:-\d{2})?\b|\b(?:Q[1-4]|H[12])\s?\d{4}\b|\b\d{4}\s?-?\s?(?:Q[1-4]|H[12])\b|"
     r"\bQ[1-4]\b|\bH[12]\b|\bF\d+\b"
 )
+_MULTIPLIER = re.compile(r"[*\u00d7]\s?100\s?%?|(?:multiplied|times)\s+(?:by\s+)?100\b", re.IGNORECASE)
 _CAUSAL = re.compile(
     r"\b(caused|causes|causing|because of|due to|led to|leads to|resulted in|results in|drove|"
     r"driven by|was driven|is driven|attributable to|thanks to)\b",
@@ -93,8 +94,8 @@ class ClaimCheck:
 
 
 def extract_numbers(text: str, exempt_phrases: list[str] | None = None) -> list[NumberToken]:
-    masked = text
-    for match in _DATE_LIKE.finditer(text):
+    masked = _MULTIPLIER.sub(lambda m: " " * len(m.group(0)), text)
+    for match in _DATE_LIKE.finditer(masked):
         masked = masked[: match.start()] + " " * (match.end() - match.start()) + masked[match.end() :]
     for phrase in exempt_phrases or []:
         if phrase and any(ch.isdigit() for ch in phrase):
@@ -157,12 +158,23 @@ def _close(token: NumberToken, value: float) -> bool:
     return False
 
 
-def _entity_ok(sentence: str, finding: Finding) -> bool:
-    entities = [e for e in (finding.payload or {}).get("entities", []) if e]
+def _mentions(text: str, entity: str) -> bool:
+    return bool(re.search(rf"(?<![\w]){re.escape(entity.lower())}(?![\w])", text))
+
+
+def _entity_ok(sentence: str, finding: Finding, known_entities: set[str]) -> bool:
+    """A finding supports a sentence unless the sentence is about a different known entity.
+
+    Sentences that name none of the known entities ("The revenue change was ...") may use a finding scoped to a
+    filter; sentences naming another segment ("Karachi fell 17.3%") cannot borrow a Lahore number.
+    """
+    entities = [str(e).lower() for e in (finding.payload or {}).get("entities", []) if e]
     if not entities:
         return True
     lowered = sentence.lower()
-    return any(str(e).lower() in lowered for e in entities)
+    if any(_mentions(lowered, e) for e in entities):
+        return True
+    return not any(_mentions(lowered, other) for other in known_entities if other not in entities)
 
 
 def _periods_ok(sentence: str, finding: Finding) -> bool:
@@ -215,8 +227,17 @@ def _derived(token: NumberToken, findings: list[Finding]) -> Match | None:
 
 
 def verify_sentence(
-    text: str, citations: list[str], findings: dict[str, Finding], *, section: str, kind: str, exempt_phrases: list[str]
+    text: str,
+    citations: list[str],
+    findings: dict[str, Finding],
+    *,
+    section: str,
+    kind: str,
+    exempt_phrases: list[str],
+    known_entities: set[str] | None = None,
 ) -> ClaimCheck:
+    if known_entities is None:
+        known_entities = entities_of(findings.values())
     valid_citations = [c.upper().strip() for c in citations if c and c.upper().strip() in findings]
     check = ClaimCheck(text=text.strip(), status="no_numbers", section=section, kind=kind, citations=valid_citations)
     tokens = extract_numbers(text, exempt_phrases)
@@ -226,7 +247,7 @@ def verify_sentence(
     for token in tokens:
         match = None
         for scope in (cited, pool):
-            candidates = [f for f in scope if _entity_ok(text, f) and _periods_ok(text, f)]
+            candidates = [f for f in scope if _entity_ok(text, f, known_entities) and _periods_ok(text, f)]
             for finding in candidates:
                 for key, value in _numeric_values(finding).items():
                     if _close(token, value):
@@ -295,8 +316,20 @@ class VerificationReport:
         }
 
 
-def verify_answer(draft: dict[str, Any], findings: list[Finding], *, exempt_phrases: list[str]) -> VerificationReport:
+def entities_of(findings: Any) -> set[str]:
+    return {str(e).lower() for f in findings for e in (f.payload or {}).get("entities", []) if e and len(str(e)) >= 3}
+
+
+def verify_answer(
+    draft: dict[str, Any],
+    findings: list[Finding],
+    *,
+    exempt_phrases: list[str],
+    known_entities: set[str] | None = None,
+) -> VerificationReport:
+    """Verify a drafted answer. known_entities: category values of the dataset (plus finding entities)."""
     by_label = {f.label.upper(): f for f in findings}
+    known = {e.lower() for e in (known_entities or set()) if len(e) >= 3} | entities_of(findings)
     claims: list[ClaimCheck] = []
 
     def handle(items: list[Any], section: str, kind: str) -> None:
@@ -311,7 +344,15 @@ def verify_answer(draft: dict[str, Any], findings: list[Finding], *, exempt_phra
                 )
             for sentence in _split_sentences(text):
                 claims.append(
-                    verify_sentence(sentence, cites, by_label, section=sec, kind=kind, exempt_phrases=exempt_phrases)
+                    verify_sentence(
+                        sentence,
+                        cites,
+                        by_label,
+                        section=sec,
+                        kind=kind,
+                        exempt_phrases=exempt_phrases,
+                        known_entities=known,
+                    )
                 )
 
     handle(draft.get("summary", []), "summary", "fact")
@@ -321,7 +362,9 @@ def verify_answer(draft: dict[str, Any], findings: list[Finding], *, exempt_phra
 
     headline = str(draft.get("headline") or "").strip()
     head_check = (
-        verify_sentence(headline, [], by_label, section="headline", kind="fact", exempt_phrases=exempt_phrases)
+        verify_sentence(
+            headline, [], by_label, section="headline", kind="fact", exempt_phrases=exempt_phrases, known_entities=known
+        )
         if headline
         else None
     )
@@ -333,7 +376,13 @@ def verify_answer(draft: dict[str, Any], findings: list[Finding], *, exempt_phra
     caveats = []
     for caveat in draft.get("caveats", []) or []:
         check = verify_sentence(
-            str(caveat), [], by_label, section="caveat", kind="caveat", exempt_phrases=exempt_phrases
+            str(caveat),
+            [],
+            by_label,
+            section="caveat",
+            kind="caveat",
+            exempt_phrases=exempt_phrases,
+            known_entities=known,
         )
         if check.status != "removed":
             caveats.append(check.text)

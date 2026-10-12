@@ -50,7 +50,7 @@ services:
   backend:
     image: analystos-backend:latest
     <<: *backend-env
-    ports: ["8000:8000"]
+    ports: ["${API_PORT:-8000}:8000"]
     volumes: [appdata:/data]
     extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on:
@@ -77,7 +77,7 @@ services:
 
   frontend:
     build: ./frontend
-    ports: ["3000:80"]
+    ports: ["${WEB_PORT:-3000}:80"]
     depends_on:
       backend: {condition: service_healthy}
 
