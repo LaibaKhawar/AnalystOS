@@ -8,7 +8,7 @@ from app.agent.llm.openai_compat import get_provider
 from app.agent.orchestrator import AnalysisRunner
 from app.core.logging import get_logger
 from app.db.base import utcnow
-from app.db.models import Analysis
+from app.db.models import Analysis, Schedule
 from app.db.session import get_session_factory
 from app.workers.celery_app import celery_app
 
@@ -42,6 +42,44 @@ def execute_analysis(analysis_id: str) -> str:
     try:
         analysis = AnalysisRunner(session, get_provider()).run(analysis_id)
         return analysis.status
+    finally:
+        session.close()
+
+
+@celery_app.task(name="analystos.dispatch_schedules")
+def dispatch_schedules() -> int:
+    """Beat task (every minute): start due scheduled analyses."""
+    session = get_session_factory()()
+    try:
+        from app.services.schedules import dispatch_due
+
+        pairs = []
+        for analysis_id in dispatch_due(session):
+            schedule_id = session.query(Schedule.id).filter(Schedule.last_analysis_id == analysis_id).scalar()
+            pairs.append((analysis_id, schedule_id))
+    finally:
+        session.close()
+    for analysis_id, schedule_id in pairs:
+        run_scheduled_analysis.delay(analysis_id, schedule_id)
+    return len(pairs)
+
+
+@celery_app.task(name="analystos.run_scheduled_analysis", max_retries=0)
+def run_scheduled_analysis(analysis_id: str, schedule_id: str) -> str:
+    status = execute_analysis(analysis_id)
+    raise_alerts(analysis_id, schedule_id)
+    return status
+
+
+def raise_alerts(analysis_id: str, schedule_id: str) -> None:
+    from app.services.schedules import create_alerts
+
+    session = get_session_factory()()
+    try:
+        schedule = session.get(Schedule, schedule_id)
+        analysis = session.get(Analysis, analysis_id)
+        if schedule is not None and analysis is not None:
+            create_alerts(session, schedule, analysis)
     finally:
         session.close()
 

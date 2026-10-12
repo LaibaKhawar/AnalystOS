@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     sandbox_pids_limit: int = 128
     sandbox_max_output_bytes: int = 2_000_000
 
+    # Schedules: minimum interval, and (development only) allow http:// and private-network webhook targets
+    schedule_min_interval_minutes: int = 15
+    allow_insecure_webhooks: bool = False
+
     # Observability
     otel_exporter_otlp_endpoint: str | None = None
     metrics_enabled: bool = True
@@ -115,6 +119,8 @@ class Settings(BaseSettings):
             self.secret_key.lower() in _INSECURE_SECRETS or len(self.secret_key) < 32
         ):
             raise ValueError("SECRET_KEY must be a random value of at least 32 characters in production")
+        if self.environment == "production" and self.allow_insecure_webhooks:
+            raise ValueError("ALLOW_INSECURE_WEBHOOKS must be false in production")
         if len(self.secret_key) < 16:
             raise ValueError("SECRET_KEY must be at least 16 characters")
         try:

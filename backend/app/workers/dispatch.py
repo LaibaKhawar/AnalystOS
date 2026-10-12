@@ -20,3 +20,19 @@ def enqueue_analysis(analysis_id: str) -> None:
 
     run_analysis.delay(analysis_id)
     log.info("analysis_enqueued", analysis=analysis_id)
+
+
+def enqueue_scheduled(analysis_id: str, schedule_id: str) -> None:
+    """Run a scheduled analysis and raise alerts afterwards (inline thread in tests / no-Redis mode)."""
+    if get_settings().run_analyses_inline:
+        from app.workers.tasks import execute_analysis, raise_alerts
+
+        def _run() -> None:
+            execute_analysis(analysis_id)
+            raise_alerts(analysis_id, schedule_id)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return
+    from app.workers.tasks import run_scheduled_analysis
+
+    run_scheduled_analysis.delay(analysis_id, schedule_id)

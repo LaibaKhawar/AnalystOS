@@ -21,6 +21,7 @@ celery_app.conf.update(
     result_expires=3600,
     task_serializer="json",
     accept_content=["json"],
+    beat_schedule={"dispatch-schedules": {"task": "analystos.dispatch_schedules", "schedule": 60.0}},
 )
 
 

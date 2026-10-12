@@ -76,6 +76,15 @@ services:
       redis: {condition: service_healthy}
       sandbox: {condition: service_completed_successfully}
 
+  # Starts due scheduled analyses every minute.
+  beat:
+    image: analystos-backend:latest
+    <<: *backend-env
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
   frontend:
     build: ./frontend
     ports: ["${WEB_PORT:-3000}:80"]

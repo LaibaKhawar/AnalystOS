@@ -141,6 +141,44 @@ class MetricOut(ORM):
     created_at: datetime
 
 
+class ScheduleIn(BaseModel):
+    data_source_id: str
+    name: str = Field(min_length=1, max_length=200)
+    question: str = Field(min_length=3, max_length=4000)
+    interval_minutes: int = Field(ge=1, le=60 * 24 * 31)
+    alert_min_severity: Literal["low", "medium", "high"] = "medium"
+    webhook_url: str | None = Field(None, max_length=2000)
+    enabled: bool = True
+
+
+class ScheduleOut(ORM):
+    id: str
+    data_source_id: str
+    conversation_id: str
+    name: str
+    question: str
+    interval_minutes: int
+    enabled: bool
+    alert_min_severity: str
+    webhook_url: str | None
+    next_run_at: datetime
+    last_run_at: datetime | None
+    last_analysis_id: str | None
+    created_at: datetime
+
+
+class AlertOut(ORM):
+    id: str
+    schedule_id: str | None
+    analysis_id: str | None
+    severity: str
+    title: str
+    message: str
+    delivery_status: str
+    read_at: datetime | None
+    created_at: datetime
+
+
 class ConnectionIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     kind: Literal["postgresql", "mysql", "sqlite"]
