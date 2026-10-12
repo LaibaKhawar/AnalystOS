@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} | AnalystOS report</title>
+<style>
+  :root { --ink:#18181b; --muted:#52525b; --line:#e4e4e7; --soft:#f4f4f5; --accent:#0f766e; --warn:#b45309; }
+  * { box-sizing: border-box; }
+  body { font-family: "Geist", "Segoe UI", system-ui, sans-serif; color: var(--ink); background: #fafafa; margin: 0;
+         line-height: 1.55; font-size: 14px; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 32px 80px; background: #fff; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 28px; }
+  .brand { font-weight: 600; letter-spacing: -0.01em; color: var(--accent); font-size: 13px; }
+  h1 { font-size: 26px; letter-spacing: -0.02em; line-height: 1.2; margin: 10px 0 8px; }
+  h2 { font-size: 17px; margin: 36px 0 12px; letter-spacing: -0.01em; }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--muted); }
+  .meta { color: var(--muted); font-size: 12px; }
+  .headline { font-size: 16px; padding: 14px 16px; background: var(--soft); border-left: 3px solid var(--accent);
+              border-radius: 6px; }
+  ul { padding-left: 18px; } li { margin: 6px 0; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px;
+         margin-right: 6px; vertical-align: 1px; }
+  .fact { background: #ccfbf1; color: #115e59; } .interp { background: #fef3c7; color: #92400e; }
+  .rec { background: #e0e7ff; color: #3730a3; }
+  .cite { color: var(--muted); font-size: 11px; }
+  figure { margin: 18px 0; } figure img { width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+  figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 7px 8px; vertical-align: top; }
+  thead th { border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
+  tbody tr + tr td { border-top: 1px solid var(--soft); }
+  code, pre { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--soft); padding: 8px; border-radius: 6px; margin: 4px 0 0; }
+  .caveat { color: var(--warn); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); padding-top: 14px; }
+  @media print { body { background: #fff; } main { padding: 0; } figure, tr { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">AnalystOS</div>
+    <h1>{{ title }}</h1>
+    <div class="meta">Generated {{ generated_at }} from {{ dataset.name }}{% if model %} using {{ model }}{% endif %}.
+      {% if verification %}{{ verification.verified or 0 }} numerical claims verified against computed results;
+      {{ verification.removed or 0 }} unsupported draft claims removed.{% endif %}</div>
+  </header>
+
+  <h2>Executive summary</h2>
+  <p class="headline">{{ headline }}</p>
+  {% if summary %}<ul>{% for c in summary %}<li><span class="tag fact">Fact</span>{{ c.text }}</li>{% endfor %}</ul>{% endif %}
+
+  <h2>Dataset overview</h2>
+  <table><thead><tr><th>Table</th><th>Source</th><th>Rows</th><th>Columns</th><th>Data quality notes</th></tr></thead>
+  <tbody>{% for t in dataset.tables %}<tr><td>{{ t.name }}</td><td>{{ t.display }}</td><td>{{ "{:,}".format(t.rows) }}</td>
+  <td>{{ t.columns }}</td><td>{{ t.warnings | join("; ") or "None detected" }}</td></tr>{% endfor %}</tbody></table>
+
+  {% for title, items in sections.items() %}
+  <h2>{{ title }}</h2>
+  <ul>{% for c in items %}<li><span class="tag fact">Fact</span>{{ c.text }}
+    {% if c.evidence %}<span class="cite">[{{ c.evidence | length }} evidence item{{ "s" if c.evidence | length > 1 }}]</span>{% endif %}</li>{% endfor %}</ul>
+  {% endfor %}
+
+  {% if charts %}<h2>Charts</h2>
+  {% for ch in charts %}{% if ch.png %}<figure><img alt="{{ ch.title }}" src="data:image/png;base64,{{ ch.png }}">
+    <figcaption>{{ ch.title }}{% if ch.interpretation %}. {{ ch.interpretation }}{% endif %}
+    {% if ch.verified %}Chart data verified against its source result.{% endif %}</figcaption></figure>{% endif %}{% endfor %}{% endif %}
+
+  {% if interpretations %}<h2>Interpretations</h2>
+  <ul>{% for c in interpretations %}<li><span class="tag interp">Interpretation</span>{{ c.text }}</li>{% endfor %}</ul>{% endif %}
+
+  {% if recommendations %}<h2>Recommendations</h2>
+  <ul>{% for c in recommendations %}<li><span class="tag rec">Recommendation</span>{{ c.text }}</li>{% endfor %}</ul>{% endif %}
+
+  <h2>Risks and caveats</h2>
+  <ul>{% for c in caveats %}<li class="caveat">{{ c }}</li>{% else %}<li>No additional caveats were identified.</li>{% endfor %}
+  <li>Contribution and correlation results describe association, not proven causation.</li></ul>
+
+  {% if follow_ups %}<h2>Recommended follow-up questions</h2>
+  <ul>{% for q in follow_ups %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+
+  <h2>Evidence appendix</h2>
+  <table><thead><tr><th>Claim</th><th>Evidence</th></tr></thead><tbody>
+  {% for e in evidence %}<tr><td>{{ e.claim }}</td><td><strong>{{ e.finding }}</strong> ({{ e.source_type }}{% if e.tool %}, {{ e.tool }}{% endif %}): {{ e.statement }}
+    {% if e.formula %}<pre>{{ e.formula }}</pre>{% endif %}{% if e.sql %}<pre>{{ e.sql }}</pre>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="2">No evidence items.</td></tr>{% endfor %}</tbody></table>
+
+  <footer>Produced by AnalystOS. Every number in this report was computed by a recorded SQL query or sandboxed
+  computation and matched to the sentence that states it.</footer>
+</main>
+</body>
+</html>

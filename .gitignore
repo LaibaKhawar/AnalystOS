@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+
+# Runtime data and secrets
+.env
+.env.*
+!.env.example
+backend/var/
+var/
+*.duckdb
+*.duckdb.wal
+
+# Node
+node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+frontend/.vite/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp

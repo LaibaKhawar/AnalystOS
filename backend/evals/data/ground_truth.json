@@ -1,0 +1,62 @@
+{
+  "top_region_total": "Karachi",
+  "revenue_by_region": {
+    "Karachi": 6057867.56,
+    "Lahore": 5137840.75,
+    "Islamabad": 4417277.66,
+    "Faisalabad": 2991335.5,
+    "Multan": 2832454.48
+  },
+  "top_region_2026": "Karachi",
+  "revenue_2026_q2": 3290870.16,
+  "revenue_2026_q3": 2658799.76,
+  "revenue_2026_03": 794397.81,
+  "revenue_2026_04": 1008255.78,
+  "mom_growth_mar_apr_2026_pct": 26.92,
+  "lahore_q2": 709682.64,
+  "lahore_q3": 421714.38,
+  "lahore_q3_vs_q2_pct": -40.58,
+  "region_q3_vs_q2_pct": {
+    "Lahore": -40.58,
+    "Karachi": -17.15,
+    "Islamabad": -10.85,
+    "Faisalabad": 5.56,
+    "Multan": -25.15
+  },
+  "worst_region_q3_vs_q2": "Lahore",
+  "lahore_top_decline_product": "Aurora Laptop",
+  "top_units_product_2026_03": "Nimbus Earbuds",
+  "avg_revenue_per_order_enterprise_2026": 1446.22,
+  "orders_2025": 15182,
+  "electronics_share_2025_pct": 81.71,
+  "gross_profit_2025": 3877729.42,
+  "duplicate_rows": 40,
+  "top_store_2026_q1": "Karachi Mall",
+  "karachi_aug_2026_lowest_day": "2026-08-14",
+  "total_rows": 26358,
+  "saas_churned_customers": 157,
+  "saas_churn_rate_by_plan_pct": {
+    "Enterprise": 2.67,
+    "Growth": 12.6,
+    "Scale": 9.86,
+    "Starter": 33.13
+  },
+  "saas_highest_churn_plan": "Starter",
+  "saas_active_mrr": 979566.14,
+  "saas_avg_tickets_churned": 5.4,
+  "saas_avg_tickets_active": 3.23,
+  "saas_expanded_customers": 189,
+  "saas_top_industry_mrr": "Logistics",
+  "saas_seats_mrr_pearson": 0.947,
+  "mkt_lowest_cost_per_conversion_channel": "Email",
+  "mkt_cost_per_conversion": {
+    "Affiliate": 6.8,
+    "Display": 100.38,
+    "Email": 1.39,
+    "Paid Search": 3.69,
+    "Social": 22.41
+  },
+  "mkt_spend_2026_06": 78943.87,
+  "mkt_email_conversion_rate_pct": 7.97,
+  "mkt_paid_search_spend_conversions_pearson": 0.784
+}
