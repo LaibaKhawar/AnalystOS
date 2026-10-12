@@ -13,6 +13,8 @@ class EvaluationRun(TimestampMixin, Base):
     __tablename__ = "evaluation_runs"
 
     id: Mapped[str] = id_column("evr")
+    # NULL = system benchmark run (CLI), visible to everyone; otherwise visible to its owner only.
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     suite: Mapped[str] = mapped_column(String(64))
     model: Mapped[str] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(String(16), default="running")

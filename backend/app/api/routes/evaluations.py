@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
@@ -26,14 +27,16 @@ def _run(run: EvaluationRun) -> dict[str, object]:
 
 
 @router.get("")
-def runs(_: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
-    return [_run(r) for r in db.query(EvaluationRun).order_by(EvaluationRun.created_at.desc()).limit(50).all()]
+def runs(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+    """System benchmark runs (no owner) are visible to everyone; other runs only to their owner."""
+    query = db.query(EvaluationRun).filter(or_(EvaluationRun.user_id.is_(None), EvaluationRun.user_id == user.id))
+    return [_run(r) for r in query.order_by(EvaluationRun.created_at.desc()).limit(50).all()]
 
 
 @router.get("/{run_id}")
-def run_detail(run_id: str, _: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, object]:
+def run_detail(run_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, object]:
     run = db.get(EvaluationRun, run_id)
-    if run is None:
+    if run is None or (run.user_id is not None and run.user_id != user.id):
         raise NotFoundError("Evaluation run not found")
     cases = db.query(EvaluationCase).filter(EvaluationCase.run_id == run.id).order_by(EvaluationCase.created_at).all()
     return {

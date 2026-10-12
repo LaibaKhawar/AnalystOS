@@ -14,8 +14,12 @@ from app.db.session import get_session_factory
 from app.services.ingestion.service import ingest_upload
 
 DATA = Path(__file__).resolve().parents[1] / "evals" / "data"
-FILES = {"sales.csv": "Sales 2025-2026", "sales_2026.xlsx": "Sales workbook 2026",
-         "saas_subscriptions.csv": "SaaS subscriptions", "marketing_performance.csv": "Marketing performance"}
+FILES = {
+    "sales.csv": "Sales 2025-2026",
+    "sales_2026.xlsx": "Sales workbook 2026",
+    "saas_subscriptions.csv": "SaaS subscriptions",
+    "marketing_performance.csv": "Marketing performance",
+}
 
 
 def main() -> None:
@@ -26,7 +30,13 @@ def main() -> None:
     db = get_session_factory()()
     user = db.query(User).filter(User.email == args.email).first()
     if user is None:
-        user = User(email=args.email, name="Demo Analyst", password_hash=hash_password(args.password), is_admin=True)
+        user = User(
+            email=args.email,
+            name="Demo Analyst",
+            password_hash=hash_password(args.password),
+            is_admin=True,
+            role="admin",
+        )
         db.add(user)
         db.commit()
     for filename, name in FILES.items():

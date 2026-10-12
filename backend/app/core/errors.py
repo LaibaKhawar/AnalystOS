@@ -40,6 +40,11 @@ class ConnectionFailed(AnalystError):
     code = "connection_failed"
 
 
+class ForbiddenError(AnalystError):
+    status_code = 403
+    code = "forbidden"
+
+
 class AuthError(AnalystError):
     status_code = 401
     code = "unauthorized"

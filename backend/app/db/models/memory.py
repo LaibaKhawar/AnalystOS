@@ -6,7 +6,7 @@ import contextlib
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Text
+from sqlalchemy import ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.config import get_settings
@@ -19,6 +19,14 @@ with contextlib.suppress(Exception):  # settings may be unavailable at import ti
 
 class AnalysisMemory(TimestampMixin, Base):
     __tablename__ = "analysis_memory"
+    __table_args__ = (
+        Index(
+            "ix_analysis_memory_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
 
     id: Mapped[str] = id_column("mem")
     analysis_id: Mapped[str] = mapped_column(ForeignKey("analyses.id", ondelete="CASCADE"), unique=True)

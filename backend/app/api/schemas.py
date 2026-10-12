@@ -23,8 +23,13 @@ class LoginIn(BaseModel):
     password: str
 
 
+class RefreshIn(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=200)
+
+
 class TokenOut(BaseModel):
     access_token: str
+    refresh_token: str = ""
     token_type: str = "bearer"  # noqa: S105 - OAuth token type, not a secret
     user: UserOut
 
@@ -34,6 +39,11 @@ class UserOut(ORM):
     email: str
     name: str
     is_admin: bool
+    role: str
+
+
+class RoleIn(BaseModel):
+    role: Literal["admin", "analyst", "viewer"]
 
 
 class ColumnOut(ORM):
@@ -84,6 +94,22 @@ class SourceOut(ORM):
     file_type: str | None = None
     size_bytes: int | None = None
     ingestion_report: dict[str, Any] | None = None
+    access: str | None = None  # manage | ask | read
+    owned: bool = True
+
+
+class ShareIn(BaseModel):
+    email: EmailStr
+    role: Literal["viewer", "analyst"] = "viewer"
+
+
+class ShareOut(BaseModel):
+    id: str
+    user_id: str
+    email: str
+    name: str
+    role: str
+    created_at: datetime
 
 
 class ConnectionIn(BaseModel):

@@ -32,7 +32,11 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = Field(..., description="JWT signing key")
     encryption_key: str = Field(..., description="Fernet key used to encrypt stored DB credentials")
-    access_token_ttl_minutes: int = 60 * 12
+    access_token_ttl_minutes: int = 30
+    refresh_token_ttl_days: int = 30
+    # Rate limits (0 disables): sign-in attempts per IP per minute, questions per user per hour
+    login_rate_per_minute: int = 10
+    questions_per_hour: int = 60
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173", "http://localhost:3000"]
     allow_registration: bool = True
 

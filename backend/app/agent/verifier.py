@@ -371,6 +371,9 @@ def verify_answer(
         if headline
         else None
     )
+    if head_check is not None:
+        head_check.section = "headline"
+        claims.insert(0, head_check)  # stored with evidence so the headline itself is auditable
     if head_check is None or head_check.status == "removed":
         fallback = next(
             (c.text for c in claims if c.section == "summary" and c.status in {"verified", "no_numbers"}), None

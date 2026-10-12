@@ -43,13 +43,21 @@ def main() -> None:
     AnalysisRunner(db, get_provider(), emit_events=True).run(analysis.id)
     db.expire_all()
     analysis = db.get(Analysis, analysis.id)
-    print(f"\nstatus={analysis.status} latency={time.time() - started:.1f}s calls={analysis.llm_calls} "
-          f"tokens={analysis.input_tokens}+{analysis.output_tokens} replans={analysis.replans} error={analysis.error}")
-    print("PLAN:", json.dumps([{"id": s["id"], "tool": s["tool"], "args": s["args"]} for s in
-                               analysis.plan.get("steps", [])], default=str)[:3000])
+    print(
+        f"\nstatus={analysis.status} latency={time.time() - started:.1f}s calls={analysis.llm_calls} "
+        f"tokens={analysis.input_tokens}+{analysis.output_tokens} replans={analysis.replans} error={analysis.error}"
+    )
+    print(
+        "PLAN:",
+        json.dumps(
+            [{"id": s["id"], "tool": s["tool"], "args": s["args"]} for s in analysis.plan.get("steps", [])], default=str
+        )[:3000],
+    )
     for step in db.query(AnalysisStep).filter(AnalysisStep.analysis_id == analysis.id).order_by(AnalysisStep.ordinal):
         print(f"  [{step.status}] {step.tool}: {step.title} :: {(step.result_summary or '')[:160]!r}")
-    for ex in db.query(ToolExecution).filter(ToolExecution.analysis_id == analysis.id).order_by(ToolExecution.created_at):
+    for ex in (
+        db.query(ToolExecution).filter(ToolExecution.analysis_id == analysis.id).order_by(ToolExecution.created_at)
+    ):
         if ex.status != "success":
             print(f"  FAIL {ex.tool} attempt={ex.attempt} {ex.error_kind}: {(ex.error or '')[:200]}")
     print("ANSWER:", json.dumps(analysis.answer, indent=1, default=str)[:2500])

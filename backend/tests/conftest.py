@@ -21,6 +21,9 @@ os.environ["LOG_JSON"] = "false"
 os.environ["LOG_LEVEL"] = "WARNING"
 os.environ["EMBEDDING_BASE_URL"] = ""
 os.environ["SANDBOX_TIMEOUT_SECONDS"] = "8"
+os.environ.setdefault("REDIS_URL", "redis://localhost:6380/1")
+os.environ["LOGIN_RATE_PER_MINUTE"] = "0"  # rate limiting has its own test
+os.environ["QUESTIONS_PER_HOUR"] = "0"
 
 import pytest  # noqa: E402
 from sqlalchemy import text  # noqa: E402

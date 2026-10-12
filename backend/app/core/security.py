@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -37,6 +39,16 @@ def create_access_token(user_id: str) -> str:
         "typ": "access",
     }
     return jwt.encode(payload, settings.secret_key, algorithm=_ALGORITHM)
+
+
+def new_refresh_token() -> tuple[str, str]:
+    """Return (opaque token for the client, sha256 hash to store)."""
+    token = secrets.token_urlsafe(48)
+    return token, hash_token(token)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def decode_access_token(token: str) -> str:

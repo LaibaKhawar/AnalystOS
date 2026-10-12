@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import current_user, owned_source
-from app.api.schemas import ColumnOut, ColumnPatch, ConnectionIn, SourceOut, TableOut
+from app.api.deps import current_user, owned_source, require_role, source_access
+from app.api.schemas import ColumnOut, ColumnPatch, ConnectionIn, ShareIn, ShareOut, SourceOut, TableOut
 from app.core.config import get_settings
 from app.core.errors import ConnectionFailed, NotFoundError, ValidationFailed
 from app.core.security import encrypt_secret
 from app.db.base import utcnow
-from app.db.models import ColumnMetadata, Dataset, DatasetVersion, DataSource, TableMetadata, User
+from app.db.models import ColumnMetadata, Dataset, DatasetVersion, DataSource, SourceShare, TableMetadata, User
 from app.db.session import get_db
 from app.services.datasources.base import QueryFailed
 from app.services.datasources.factory import engine_for
@@ -24,8 +25,11 @@ from app.services.ingestion.service import ingest_upload
 router = APIRouter(prefix="/api/sources", tags=["data sources"])
 
 
-def _source_out(db: Session, source: DataSource) -> SourceOut:
+def _source_out(db: Session, source: DataSource, user: User | None = None) -> SourceOut:
     out = SourceOut.model_validate(source)
+    if user is not None:
+        out.access = source_access(db, user, source)
+        out.owned = source.user_id == user.id
     out.has_password = bool(source.password_encrypted)
     out.table_count = len(source.tables)
     out.row_count = sum(t.row_count for t in source.tables)
@@ -39,14 +43,15 @@ def _source_out(db: Session, source: DataSource) -> SourceOut:
 
 @router.get("", response_model=list[SourceOut])
 def list_sources(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[SourceOut]:
+    shared_ids = select(SourceShare.data_source_id).where(SourceShare.user_id == user.id)
     sources = (
         db.query(DataSource)
         .options(selectinload(DataSource.tables))
-        .filter(DataSource.user_id == user.id)
+        .filter(or_(DataSource.user_id == user.id, DataSource.id.in_(shared_ids)))
         .order_by(DataSource.created_at.desc())
         .all()
     )
-    return [_source_out(db, s) for s in sources]
+    return [_source_out(db, s, user) for s in sources]
 
 
 @router.post("/upload", response_model=SourceOut, status_code=201)
@@ -57,6 +62,7 @@ def upload(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> SourceOut:
+    require_role(user, "analyst", "admin")
     sheet_list = [s.strip() for s in sheets.split(",") if s.strip()] if sheets else None
     dataset = ingest_upload(
         db, user_id=user.id, stream=file.file, filename=file.filename or "upload.csv", name=name, sheets=sheet_list
@@ -70,6 +76,7 @@ def upload(
 def create_connection(
     body: ConnectionIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> SourceOut:
+    require_role(user, "analyst", "admin")
     if body.kind != "sqlite" and not body.host:
         raise ValidationFailed("Host is required")
     source = DataSource(
@@ -114,7 +121,7 @@ def _refresh(db: Session, source: DataSource) -> None:
 
 @router.post("/{source_id}/refresh", response_model=SourceOut)
 def refresh_connection(source_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> SourceOut:
-    source = owned_source(db, user, source_id)
+    source = owned_source(db, user, source_id, need="manage")
     if source.kind == "file":
         raise ValidationFailed("Uploaded datasets are profiled at upload time")
     _refresh(db, source)
@@ -124,12 +131,12 @@ def refresh_connection(source_id: str, user: User = Depends(current_user), db: S
 
 @router.get("/{source_id}", response_model=SourceOut)
 def get_source(source_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> SourceOut:
-    return _source_out(db, owned_source(db, user, source_id))
+    return _source_out(db, owned_source(db, user, source_id), user)
 
 
 @router.delete("/{source_id}", status_code=204)
 def delete_source(source_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
-    source = owned_source(db, user, source_id)
+    source = owned_source(db, user, source_id, need="manage")
     dataset = db.query(Dataset).filter(Dataset.data_source_id == source.id).first()
     files = get_settings().datasets_dir / dataset.id if dataset else None
     db.delete(source)
@@ -180,7 +187,7 @@ def preview(
 def patch_column(
     source_id: str, column_id: str, body: ColumnPatch, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> ColumnMetadata:
-    source = owned_source(db, user, source_id)
+    source = owned_source(db, user, source_id, need="manage")
     column = db.get(ColumnMetadata, column_id)
     if column is None or column.table.data_source_id != source.id:
         raise NotFoundError("Column not found")
@@ -208,3 +215,59 @@ def schema_csv(source_id: str, table_id: str, user: User = Depends(current_user)
             f"{c.semantic_confidence},{c.stats.get('missing_pct')},{c.stats.get('distinct_count')}"
         )
     return "\n".join(lines)
+
+
+@router.get("/{source_id}/shares", response_model=list[ShareOut])
+def list_shares(source_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[ShareOut]:
+    source = owned_source(db, user, source_id, need="manage")
+    rows = (
+        db.query(SourceShare, User)
+        .join(User, User.id == SourceShare.user_id)
+        .filter(SourceShare.data_source_id == source.id)
+        .all()
+    )
+    return [
+        ShareOut(id=s.id, user_id=u.id, email=u.email, name=u.name, role=s.role, created_at=s.created_at)
+        for s, u in rows
+    ]
+
+
+@router.post("/{source_id}/shares", response_model=ShareOut, status_code=201)
+def share_source(
+    source_id: str, body: ShareIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> ShareOut:
+    source = owned_source(db, user, source_id, need="manage")
+    grantee = db.query(User).filter(User.email == body.email.lower()).first()
+    if grantee is None:
+        raise NotFoundError("No account exists with that email")
+    if grantee.id == source.user_id:
+        raise ValidationFailed("The owner already has full access")
+    share = (
+        db.query(SourceShare).filter(SourceShare.data_source_id == source.id, SourceShare.user_id == grantee.id).first()
+    )
+    if share is None:
+        share = SourceShare(data_source_id=source.id, user_id=grantee.id, role=body.role, created_by=user.id)
+        db.add(share)
+    else:
+        share.role = body.role
+    db.commit()
+    return ShareOut(
+        id=share.id,
+        user_id=grantee.id,
+        email=grantee.email,
+        name=grantee.name,
+        role=share.role,
+        created_at=share.created_at,
+    )
+
+
+@router.delete("/{source_id}/shares/{share_id}", status_code=204)
+def unshare_source(
+    source_id: str, share_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> None:
+    source = owned_source(db, user, source_id, need="manage")
+    share = db.get(SourceShare, share_id)
+    if share is None or share.data_source_id != source.id:
+        raise NotFoundError("Share not found")
+    db.delete(share)
+    db.commit()

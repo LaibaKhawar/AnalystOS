@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from app.api.routes import analyses, auth, conversations, evaluations, reports, sources, system
+from app.api.routes import admin, analyses, auth, conversations, evaluations, reports, sources, system
 from app.core.config import get_settings
 from app.core.errors import AnalystError
 from app.core.logging import configure_logging, get_logger, request_id_var
@@ -91,6 +91,7 @@ def create_app() -> FastAPI:
         analyses.router,
         reports.router,
         evaluations.router,
+        admin.router,
         system.router,
     ):
         app.include_router(router)

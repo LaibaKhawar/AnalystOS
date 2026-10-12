@@ -124,3 +124,9 @@ def test_number_extraction_skips_years_dates_and_labels() -> None:
 def test_bare_citation_sentences_are_dropped() -> None:
     draft = {"summary": [{"text": "F1", "citations": ["F1"]}], "facts": [{"text": "[F1, F2]."}]}
     assert verify_answer(draft, [F1, F2], exempt_phrases=[]).claims == []
+
+
+def test_headline_is_kept_as_an_auditable_claim() -> None:
+    draft = {"headline": "Lahore revenue fell 17.3% in Q3", "summary": [], "facts": []}
+    report = verify_answer(draft, [F1, F2], exempt_phrases=[])
+    assert report.claims[0].section == "headline" and report.claims[0].status == "verified"

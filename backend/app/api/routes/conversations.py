@@ -3,9 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_user, owned_conversation, owned_source
+from app.api.deps import current_user, owned_conversation, owned_source, require_role
 from app.api.schemas import AnalysisOut, AskIn, ConversationIn, ConversationOut, MessageOut
+from app.core.config import get_settings
 from app.core.errors import ValidationFailed
+from app.core.ratelimit import hit
 from app.db.base import utcnow
 from app.db.models import Analysis, Conversation, Message, User
 from app.db.session import get_db
@@ -28,7 +30,8 @@ def list_conversations(
 def create_conversation(
     body: ConversationIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Conversation:
-    source = owned_source(db, user, body.data_source_id)
+    require_role(user, "analyst", "admin")
+    source = owned_source(db, user, body.data_source_id, need="ask")
     if source.status != "ready":
         raise ValidationFailed("This data source is not ready yet")
     conversation = Conversation(
@@ -80,6 +83,8 @@ def ask(
     conversation_id: str, body: AskIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Analysis:
     conversation = owned_conversation(db, user, conversation_id)
+    owned_source(db, user, conversation.data_source_id, need="ask")
+    hit(f"ask:{user.id}", get_settings().questions_per_hour, 3600)
     running = (
         db.query(Analysis)
         .filter(Analysis.conversation_id == conversation.id, Analysis.status.in_(["queued", "running"]))
