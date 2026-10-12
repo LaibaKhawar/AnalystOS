@@ -30,7 +30,7 @@ os.environ["LOGIN_RATE_PER_MINUTE"] = "0"
 os.environ["QUESTIONS_PER_HOUR"] = "0"
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5174")
 
-from app.agent.llm.base import LLMProvider, LLMResponse, Usage  # noqa: E402
+from app.agent.llm.base import LLMProvider, LLMResponse, Usage
 
 
 class RuleBasedLLM(LLMProvider):
@@ -121,7 +121,7 @@ def main() -> None:
     import uvicorn
     from sqlalchemy import text
 
-    import app.db.models  # noqa: F401  (register every table on the metadata)
+    import app.db.models
     from app.db.base import Base
     from app.db.session import get_engine
 
