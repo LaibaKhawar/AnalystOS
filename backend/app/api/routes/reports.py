@@ -17,6 +17,11 @@ from app.services.reports.builder import build_report, render_pdf
 router = APIRouter(prefix="/api", tags=["reports"])
 
 
+class PDFUnavailable(AnalystError):
+    status_code = 501
+    code = "pdf_unavailable"
+
+
 @router.post("/analyses/{analysis_id}/report", response_model=ReportOut, status_code=201)
 def create_report(analysis_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> Report:
     analysis = owned_analysis(db, user, analysis_id)
@@ -24,6 +29,15 @@ def create_report(analysis_id: str, user: User = Depends(current_user), db: Sess
         raise ValidationFailed("Reports can be generated for completed analyses only")
     report = build_report(db, analysis)
     db.commit()
+    return report
+
+
+@router.get("/analyses/{analysis_id}/report", response_model=ReportOut)
+def report_for_analysis(analysis_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> Report:
+    owned_analysis(db, user, analysis_id)
+    report = db.query(Report).filter(Report.analysis_id == analysis_id).order_by(Report.created_at.desc()).first()
+    if report is None:
+        raise NotFoundError("No report has been generated for this analysis")
     return report
 
 
@@ -60,7 +74,7 @@ def report_pdf(report_id: str, user: User = Depends(current_user), db: Session =
     try:
         pdf = render_pdf(report.html)
     except RuntimeError as exc:
-        raise AnalystError(str(exc)) from exc
+        raise PDFUnavailable(str(exc)) from exc
     return Response(
         pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{report.id}.pdf"'}
     )

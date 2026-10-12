@@ -483,3 +483,34 @@ def test_cancel_queued_analysis(
     assert busy.status_code == 422
     cancelled = client.post(f"/api/analyses/{analysis['id']}/cancel", headers=auth).json()
     assert cancelled["status"] == "cancelled"
+
+
+def test_top_one_question_keeps_full_ranking_and_report_lookup(
+    client: TestClient, auth, agent, upload, ask, data_dir: Path
+) -> None:  # type: ignore[no-untyped-def]
+    source = upload(data_dir / "sales.csv")
+    agent.script(
+        plan=[
+            {
+                "goal": "Top region",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "title": "Top region",
+                        "tool": "aggregate_metric",
+                        "args": {"metric": {"column": "revenue"}, "group_by": ["region"], "limit": 1},
+                    }
+                ],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "Highest" in t, 1)],
+    )
+    analysis = ask(source["id"], "Which region had the highest revenue?")
+    findings = client.get(f"/api/analyses/{analysis['id']}/findings", headers=auth).json()
+    assert any("rank 1 of 5" in f["statement"] for f in findings)
+    assert client.get(f"/api/analyses/{analysis['id']}/charts", headers=auth).json(), "auto chart from full ranking"
+    events = client.get(f"/api/analyses/{analysis['id']}/events", headers=auth).json()
+    assert all(e["payload"].get("step_record_id", "").startswith("stp_") for e in events if e["type"] == "step_started")
+    assert client.get(f"/api/analyses/{analysis['id']}/report", headers=auth).status_code == 404
+    created = client.post(f"/api/analyses/{analysis['id']}/report", headers=auth).json()
+    assert client.get(f"/api/analyses/{analysis['id']}/report", headers=auth).json()["id"] == created["id"]

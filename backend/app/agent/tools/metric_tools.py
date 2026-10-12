@@ -89,7 +89,8 @@ class AggregateMetric(Tool):
             extra_conditions=conditions,
             group_by=group or None,
             order_by=order or None,
-            limit=args.limit if group and not args.time_grain else None,
+            # Rankings keep the full context ("rank 1 of 5", a chartable result) even when asked for the top 1.
+            limit=max(args.limit, 25) if group and not args.time_grain else None,
         )
         result, sql_id = query(ctx, sql, internal=bool(args.time_grain))
         names = [c["name"] for c in result.columns]

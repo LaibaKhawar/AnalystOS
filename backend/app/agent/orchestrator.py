@@ -307,11 +307,11 @@ class AnalysisRunner:
                 record.result_summary = f"Skipped: depends on failed step(s) {', '.join(blocked_by or unresolved)}"
                 failed_ids.add(step.id)
                 self.db.commit()
-                ctx.events.emit("step_skipped", f"Skipped: {step.title}", step_id=step.id)
+                ctx.events.emit("step_skipped", f"Skipped: {step.title}", step_id=step.id, step_record_id=record.id)
                 continue
             record.status, record.started_at = "running", utcnow()
             self.db.commit()
-            ctx.events.emit("step_started", step.title, step_id=step.id, tool=step.tool)
+            ctx.events.emit("step_started", step.title, step_id=step.id, step_record_id=record.id, tool=step.tool)
             outcome = self._run_with_retries(step, record, ctx, runner, planner, schema_text)
             state.outcome = outcome
             record.completed_at = utcnow()
@@ -324,6 +324,7 @@ class AnalysisRunner:
                     "step_completed",
                     step.title,
                     step_id=step.id,
+                    step_record_id=record.id,
                     tool=record.tool,
                     execution_id=outcome.execution_id,
                     findings=outcome.finding_labels[:20],
@@ -338,6 +339,7 @@ class AnalysisRunner:
                     "step_failed",
                     f"{step.title}: {record.result_summary[:200]}",
                     step_id=step.id,
+                    step_record_id=record.id,
                     tool=record.tool,
                     error_kind=outcome.error.kind if outcome.error else None,
                 )
@@ -381,6 +383,7 @@ class AnalysisRunner:
                 "retry",
                 f"Retrying {step.title} after {error.kind.replace('_', ' ')}",
                 step_id=step.id,
+                step_record_id=record.id,
                 attempt=attempt + 1,
                 error_kind=error.kind,
             )

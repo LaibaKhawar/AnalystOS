@@ -29,6 +29,7 @@ _DATE_LIKE = re.compile(
     r"\bQ[1-4]\b|\bH[12]\b|\bF\d+\b"
 )
 _MULTIPLIER = re.compile(r"[*\u00d7]\s?100\s?%?|(?:multiplied|times)\s+(?:by\s+)?100\b", re.IGNORECASE)
+_BARE_CITATION = re.compile(r"[\s\[\](),.;]*(?:F\d+[\s\[\](),.;]*)+")
 _CAUSAL = re.compile(
     r"\b(caused|causes|causing|because of|due to|led to|leads to|resulted in|results in|drove|"
     r"driven by|was driven|is driven|attributable to|thanks to)\b",
@@ -343,6 +344,8 @@ def verify_answer(
                     item.get("section") or section,
                 )
             for sentence in _split_sentences(text):
+                if _BARE_CITATION.fullmatch(sentence):
+                    continue  # a sentence that is only "F1" or "[F2, F3]" carries no claim
                 claims.append(
                     verify_sentence(
                         sentence,

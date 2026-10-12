@@ -119,3 +119,8 @@ def test_number_extraction_skips_years_dates_and_labels() -> None:
     ]
     assert tokens == ["-3.4M", "12.7%"]
     assert extract_numbers("Store 104 sold 5,200 units", exempt_phrases=["Store 104"])[0].value == 5200
+
+
+def test_bare_citation_sentences_are_dropped() -> None:
+    draft = {"summary": [{"text": "F1", "citations": ["F1"]}], "facts": [{"text": "[F1, F2]."}]}
+    assert verify_answer(draft, [F1, F2], exempt_phrases=[]).claims == []

@@ -40,9 +40,17 @@ def reap_stale(db: Session, analysis: Analysis) -> Analysis:
 
     from app.core.config import get_settings
 
-    limit = timedelta(seconds=get_settings().agent_job_timeout_seconds + 120)
-    reference = analysis.started_at or analysis.created_at
-    if analysis.status in {"queued", "running"} and reference and datetime.now(UTC) - reference > limit:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    # A running job is bounded by the task time limit. A queued job may legitimately wait behind a busy worker,
+    # so it is only failed after a much longer window.
+    running_dead = (
+        analysis.status == "running"
+        and analysis.started_at is not None
+        and now - analysis.started_at > timedelta(seconds=settings.agent_job_timeout_seconds + 120)
+    )
+    queued_dead = analysis.status == "queued" and now - analysis.created_at > timedelta(hours=6)
+    if running_dead or queued_dead:
         analysis.status = "failed"
         analysis.error = (
             "The analysis did not finish: no worker picked it up or the worker stopped. "
