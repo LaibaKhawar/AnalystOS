@@ -2,3 +2,4 @@
 # They never protected anything; CI now generates keys at runtime.
 284d3e42a16fbd5cd81f8152c5363509d78b3a98:.github/workflows/ci.yml:generic-api-key:49
 284d3e42a16fbd5cd81f8152c5363509d78b3a98:.github/workflows/ci.yml:generic-api-key:50
+605f717b3acf223b953c540f7113afcbd842d20f:backend/tests/e2e_server.py:generic-api-key:24

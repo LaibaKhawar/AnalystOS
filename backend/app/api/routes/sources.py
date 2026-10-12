@@ -31,6 +31,7 @@ def _source_out(db: Session, source: DataSource, user: User | None = None) -> So
         out.access = source_access(db, user, source)
         out.owned = source.user_id == user.id
     out.has_password = bool(source.password_encrypted)
+    out.relationships = list((source.options or {}).get("relationships") or [])
     out.table_count = len(source.tables)
     out.row_count = sum(t.row_count for t in source.tables)
     dataset = db.query(Dataset).filter(Dataset.data_source_id == source.id).first()

@@ -129,3 +129,21 @@ def test_chinook_declared_foreign_keys_and_join(client: TestClient, auth, agent,
     assert analysis["status"] == "completed", analysis["error"]
     assert "RELATIONSHIPS" in llm.calls[0][1][-1]["content"]
     assert "USA" in analysis["answer"]["headline"]
+
+
+def test_sources_expose_relationships(client: TestClient, auth: dict[str, str], upload, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    wb = openpyxl.Workbook()
+    a = wb.active
+    a.title = "Plans"
+    a.append(["plan_id", "price"])
+    for i in range(1, 6):
+        a.append([f"P{i}", i * 10])
+    b = wb.create_sheet("Subscriptions")
+    b.append(["sub_id", "plan_id"])
+    for i in range(1, 31):
+        b.append([i, f"P{(i % 5) + 1}"])
+    path = tmp_path / "subs.xlsx"
+    wb.save(path)
+    source = upload(path)
+    rel = client.get(f"/api/sources/{source['id']}", headers=auth).json()["relationships"]
+    assert [(r["child_table"], r["parent_table"], r["source"]) for r in rel] == [("subscriptions", "plans", "inferred")]

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import tempfile
 from typing import Any
 
@@ -21,7 +22,7 @@ os.environ.setdefault(
     "DATABASE_URL",
     os.environ.get("E2E_DATABASE_URL", "postgresql+psycopg://analystos:analystos@localhost:5434/analystos_e2e"),
 )
-os.environ.setdefault("SECRET_KEY", "e2e-secret-key-0123456789abcdef")
+os.environ.setdefault("SECRET_KEY", secrets.token_hex(32))
 os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="analystos-e2e-"))
 os.environ["RUN_ANALYSES_INLINE"] = "true"

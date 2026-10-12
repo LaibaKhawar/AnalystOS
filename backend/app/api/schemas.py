@@ -95,6 +95,7 @@ class SourceOut(ORM):
     size_bytes: int | None = None
     ingestion_report: dict[str, Any] | None = None
     access: str | None = None  # manage | ask | read
+    relationships: list[dict[str, Any]] = []  # join keys between this source's tables
     owned: bool = True
 
 
