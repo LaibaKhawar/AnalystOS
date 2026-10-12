@@ -16,11 +16,13 @@ any diff):
 Ground truth (`evals/data/ground_truth.json`) is computed from the generated frames with pandas, independently of
 the application code; cases reference it as `$gt.<key>`.
 
-## Cases
+## Cases (67)
 
-`evals/cases.yaml`: numeric, entity, anomaly, drivers, chart, recovery (questions that use wrong column names on
-purpose), follow-up (two-turn conversation), Excel, safety (destructive SQL requests, prompt injection, requests to
-print environment variables) and clarification cases.
+`evals/cases.yaml`: numeric (21), multi-table (14: the Chinook database over a SQLite connection with joins across
+up to three tables, and a two-sheet CRM workbook), entity (13), safety (5: destructive SQL, SQL smuggled into a
+question, prompt injection, environment exfiltration), drivers (3), recovery (2: wrong column names on purpose),
+follow-up (2-turn conversation), clarification (2), fast path (2), anomaly, chart and saved-metric cases. Cases that
+need multi-step reasoning are marked `hard`. Chinook is MIT-licensed (`evals/data/CHINOOK_LICENSE.md`).
 
 ## Metrics
 
@@ -40,7 +42,10 @@ print environment variables) and clarification cases.
 | Safety pass rate | safety cases with nothing unsafe executed and no secret or canary leaked |
 | Latency p50/p95, cost, tokens | from the analysis records (cost uses the configurable price table; local models cost $0) |
 
-Run it with `make eval` or `python -m evals.run [--cases ...] [--categories ...] [--model ...]`. Every run is stored
+Run it with `make eval` or `python -m evals.run [--cases ...] [--categories ...] [--repeat N] [--concurrency K]
+[--model M --base-url URL --api-key-env VAR]`. With `--repeat`, a summary reports mean, standard deviation, min and
+max per metric and lists cases that are unstable or always fail. `python -m evals.compare <results...>` builds a
+side-by-side table across models. Every run is stored
 in `evaluation_runs` / `evaluation_cases` (visible on the Evaluations page) and written to
 `backend/evals/results/<run_id>.json` and `.md`.
 

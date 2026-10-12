@@ -46,6 +46,23 @@ confidence (marked `UNCERTAIN` below 0.6), ranges, top categorical values (sanit
 PII columns never show values. Raw rows are never sent to the model. A short "exact names" guide is placed next
 to the question because small models follow nearby instructions more reliably.
 
+## Fast path
+
+Before planning, `app/agent/fastpath.py` checks whether the question is a simple whole-table statistic ("What is the
+average revenue?"): one numeric column, no grouping, filter value, time reference, ranking or comparison, and an
+exact (not sample-based) profile. If so, the plan is a single `profile_dataset` step and the answer is written from
+the profile finding by a template; it still goes through the verifier. Zero LLM calls; follow-up questions always
+use the full agent.
+
+## Scope check
+
+After planning and before any tool runs, `app/agent/scope.py` looks for restrictions the user did not ask for:
+filters (tool `filters` and WHERE/HAVING conditions pinning a column to fixed values) whose column and value the
+question and conversation context never mention, and period restrictions when the question has no time reference.
+Comparisons between two columns (`mrr > initial_mrr`) define the asked-for quantity and are not restrictions. The
+planner gets one rescope attempt; remaining issues become visible assumptions (`answer.scope`, assumptions starting
+with "Scope:").
+
 ## Planning artifacts
 
 ```json

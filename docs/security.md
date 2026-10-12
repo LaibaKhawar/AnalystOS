@@ -80,4 +80,26 @@ Docker daemon, a dedicated sandbox host, or gVisor/Firecracker (`runsc` runtime)
 
 ## Access control
 
-All resources are scoped to the authenticated user; other users' ids return 404. JWTs are HS256 with expiry.
+- Roles: `admin` (everything, including user roles), `analyst` (upload, connect, ask, schedule), `viewer`
+  (read-only). The first registered account is an admin.
+- Data sources are private to their owner unless shared. A share grants `viewer` (browse) or `analyst` (browse
+  and ask) access; anything not shared returns 404, so ids cannot be probed.
+- Access tokens (HS256) live 30 minutes. Refresh tokens are opaque, stored as SHA-256 hashes, rotated on every
+  use, and revoked on sign-out; presenting an already-rotated token revokes every session of that user.
+- Rate limits (Redis, fixed window): sign-in and registration per client IP, questions per user. The limiter fails
+  open if Redis is unavailable.
+- Evaluation runs started from the CLI are system runs visible to every user; other runs are visible to their owner.
+
+## Webhooks (alerts)
+
+Alert webhooks must use HTTPS and resolve to public addresses: private, loopback, link-local (cloud metadata),
+reserved and multicast targets are rejected when the schedule is saved and again at send time (DNS can change).
+`ALLOW_INSECURE_WEBHOOKS` relaxes this for local development and is refused when `ENVIRONMENT=production`.
+
+## Sandbox backends
+
+- Docker (default): the controls listed above; set `SANDBOX_RUNTIME=runsc` to run sandbox containers under gVisor
+  where it is installed (passed through to the container runtime; covered by a unit test).
+- Modal (`SANDBOX_BACKEND=modal`): a fresh Modal Sandbox per execution with networking blocked, CPU/memory limits
+  and a wall-clock timeout, the same runner and static check, and no application secrets; for hosts without a
+  Docker daemon. Tested against real Modal (`tests/integration/test_modal_sandbox.py`).

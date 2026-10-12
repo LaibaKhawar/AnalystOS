@@ -10,7 +10,8 @@ recoverable kinds are retried.
 | `list_tables` | none | tables with row/column counts |
 | `describe_table` | `table?` | columns, types, roles, semantic meaning with confidence |
 | `inspect_schema` | none | semantic schema (metrics, dimensions, time, identifiers) |
-| `profile_dataset` | `table?` | duplicates, missing values, outliers, warnings (as findings) |
+| `profile_dataset` | `table?`, `columns[]` | precomputed row count, duplicates, and per-column non-null count, missing %, sum, mean, median, std, min, max, distinct and top values as findings (estimates when the profile is sample-based) |
+| `compute_metric` | `name`, `group_by[]`, `time_grain?`, `period?`, `filters[]` | a saved metric definition evaluated exactly (definition filters always applied) |
 | `aggregate_metric` | `metric {column, agg}`, `group_by[]`, `time_grain?`, `period?`, `filters[]`, `order`, `limit` | totals, rankings (with shares) or time series (with period-over-period % change); empty periods filled |
 | `compare_periods` | `metric`, `current_period`, `previous_period`, `dimension?`, `filters[]` | previous, current, change, % change; per segment with contribution to total change |
 | `analyze_segments` | `metric`, `dimension`, `period?`, `filters[]`, `top_n` | value, share, rank, row count, average per row, concentration |

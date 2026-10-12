@@ -32,6 +32,24 @@ schema) is larger, and Ollama silently truncates it. Use the provided Modelfiles
 Costs are estimated from `app/agent/llm/pricing.py`; override or add models with `PRICING_FILE` (YAML:
 `model: {input: <usd per 1M>, output: <usd per 1M>}`).
 
+## Monitoring stack
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
+```
+
+Grafana http://localhost:3001 (provisioned "AnalystOS" dashboard: analysis latency, tool outcomes, retries, LLM
+tokens and latency by purpose, SQL duration, sandbox outcomes, claim verification), Prometheus
+http://localhost:9090, Jaeger http://localhost:16686 (one trace per analysis). The worker serves its metrics on
+port 9100.
+
+## Hosts without Docker (Render, Fly, Railway)
+
+Platform hosts do not give containers a Docker daemon, so set `SANDBOX_BACKEND=modal` (with `MODAL_TOKEN_ID` and
+`MODAL_TOKEN_SECRET`) to run generated Python in Modal sandboxes, and point `LLM_BASE_URL` at a hosted model or the
+Modal GPU deployment (`deploy/modal/llm_server.py`). For a single-service demo, `RUN_ANALYSES_INLINE=true` runs
+analyses in the API process instead of a separate worker.
+
 ## Production checklist
 
 - Set `ENVIRONMENT=production` (startup refuses short or default `SECRET_KEY`).

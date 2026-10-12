@@ -6,7 +6,7 @@
 | Celery on macOS: `ValueError: not enough values to unpack (expected 3, got 0)` | A known prefork issue on macOS. Use `--pool=threads` (the Makefile does). Linux containers are unaffected. |
 | "The language model could not complete the analysis" | The LLM endpoint is unreachable or returned invalid JSON three times. Check `/api/system/status`, `LLM_BASE_URL`, `LLM_MODEL` and the API key. |
 | The agent invents column or table names with Ollama | The prompt was truncated by Ollama's default 4K context. Use the `analystos-qwen3-*` models from `ollama/` (16K context). |
-| Python steps fail with "sandbox is unavailable" | Docker is not reachable from the worker or the image is missing. Run `docker build -t analystos-sandbox:latest sandbox` and check the worker can access the Docker socket. |
+| Python steps fail with "sandbox is unavailable" | Docker is not reachable from the worker or the image is missing. Run `docker build -t analystos-sandbox:latest -f sandbox/Dockerfile .` and check the worker can access the Docker socket. |
 | PDF export returns an error locally | WeasyPrint needs pango system libraries. They are included in the Docker image; on macOS run `brew install pango`. HTML export always works. |
 | "Unsupported file type" | Only `.csv`, `.tsv`, `.txt` and `.xlsx` are accepted. Save legacy `.xls` files as `.xlsx`. |
 | CSV columns typed as text | Values are coerced to numbers/dates only when at least 97% of non-empty values parse, to avoid corrupting free text. Clean the column or override its semantic type in the explorer. |

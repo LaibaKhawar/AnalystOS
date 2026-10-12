@@ -30,6 +30,8 @@ The progress stream emits `progress` events (`{id, type, message, payload, creat
 
 | Area | Method | Path | Summary |
 |---|---|---|---|
+| admin | GET | `/api/admin/users` | Users |
+| admin | PATCH | `/api/admin/users/{user_id}/role` | Set Role |
 | analyses | GET | `/api/analyses` | Recent |
 | analyses | GET | `/api/analyses/{analysis_id}` | Get Analysis |
 | analyses | GET | `/api/analyses/{analysis_id}/artifacts/{python_id}/{file_name}` | Artifact |
@@ -46,6 +48,8 @@ The progress stream emits `progress` events (`{id, type, message, payload, creat
 | analyses | POST | `/api/analyses/{analysis_id}/retry` | Retry |
 | auth | GET | `/api/auth/me` | Me |
 | auth | POST | `/api/auth/login` | Login |
+| auth | POST | `/api/auth/logout` | Logout |
+| auth | POST | `/api/auth/refresh` | Refresh |
 | auth | POST | `/api/auth/register` | Register |
 | conversations | DELETE | `/api/conversations/{conversation_id}` | Delete Conversation |
 | conversations | GET | `/api/conversations` | List Conversations |
@@ -56,8 +60,10 @@ The progress stream emits `progress` events (`{id, type, message, payload, creat
 | conversations | POST | `/api/conversations/{conversation_id}/ask` | Ask |
 | conversations | POST | `/api/conversations/{conversation_id}/reset-context` | Reset Context |
 | data sources | DELETE | `/api/sources/{source_id}` | Delete Source |
+| data sources | DELETE | `/api/sources/{source_id}/shares/{share_id}` | Unshare Source |
 | data sources | GET | `/api/sources` | List Sources |
 | data sources | GET | `/api/sources/{source_id}` | Get Source |
+| data sources | GET | `/api/sources/{source_id}/shares` | List Shares |
 | data sources | GET | `/api/sources/{source_id}/tables` | Tables |
 | data sources | GET | `/api/sources/{source_id}/tables/{table_id}/columns.csv` | Schema Csv |
 | data sources | GET | `/api/sources/{source_id}/tables/{table_id}/preview` | Preview |
@@ -65,15 +71,29 @@ The progress stream emits `progress` events (`{id, type, message, payload, creat
 | data sources | POST | `/api/sources/connections` | Create Connection |
 | data sources | POST | `/api/sources/upload` | Upload |
 | data sources | POST | `/api/sources/{source_id}/refresh` | Refresh Connection |
+| data sources | POST | `/api/sources/{source_id}/shares` | Share Source |
 | evaluations | GET | `/api/evaluations` | Runs |
 | evaluations | GET | `/api/evaluations/{run_id}` | Run Detail |
+| metrics | DELETE | `/api/sources/{source_id}/metrics/{metric_id}` | Delete Metric |
+| metrics | GET | `/api/sources/{source_id}/metrics` | List Metrics |
+| metrics | POST | `/api/sources/{source_id}/metrics` | Create Metric |
+| metrics | PUT | `/api/sources/{source_id}/metrics/{metric_id}` | Update Metric |
+| reports | GET | `/api/analyses/{analysis_id}/report` | Report For Analysis |
 | reports | GET | `/api/reports` | List Reports |
 | reports | GET | `/api/reports/{report_id}` | Get Report |
 | reports | GET | `/api/reports/{report_id}/html` | Report Html |
 | reports | GET | `/api/reports/{report_id}/pdf` | Report Pdf |
 | reports | GET | `/api/reports/{report_id}/results.xlsx` | Report Results |
 | reports | POST | `/api/analyses/{analysis_id}/report` | Create Report |
+| schedules | DELETE | `/api/schedules/{schedule_id}` | Delete Schedule |
+| schedules | GET | `/api/alerts` | List Alerts |
+| schedules | GET | `/api/schedules` | List Schedules |
+| schedules | POST | `/api/alerts/{alert_id}/read` | Mark Read |
+| schedules | POST | `/api/schedules` | Create Schedule |
+| schedules | POST | `/api/schedules/{schedule_id}/run` | Run Now |
+| schedules | PUT | `/api/schedules/{schedule_id}` | Update Schedule |
 | system | GET | `/api/dashboard` | Dashboard |
 | system | GET | `/api/health` | Health |
 | system | GET | `/api/system/status` | Status |
+
 Prometheus metrics are exposed at `GET /metrics`.

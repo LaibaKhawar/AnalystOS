@@ -53,7 +53,15 @@ flowchart LR
 | Result verifier | `app/agent/verifier.py` | Number matching, derived percentages, entity and period checks, causal-language guard |
 | Report generator | `app/services/reports` | HTML (and PDF with WeasyPrint) reports and Excel result exports |
 | Conversation memory | `app/agent/persistence.py`, `models/memory.py` | Conversation state (filters, metric, period, history) and pgvector memory of past analyses |
-| Evaluation | `backend/evals` | Deterministic benchmark data, cases, scorers, runner |
+| Scope check | `app/agent/scope.py` | Finds filters and time windows the question never asked for, before execution |
+| Fast path | `app/agent/fastpath.py` | Answers simple whole-table statistics from the profile with no LLM calls |
+| Saved metrics | `app/services/metrics.py`, `api/routes/metrics.py` | Team-defined aggregate expressions, validated, used via `compute_metric` |
+| Relationships | `app/services/semantic/relationships.py` | Declared and value-verified join keys between tables |
+| Access control | `app/api/deps.py`, `api/routes/admin.py` | Roles (admin, analyst, viewer), source sharing, refresh tokens, rate limits |
+| Schedules and alerts | `app/services/schedules.py`, `api/routes/schedules.py` | Recurring analyses, anomaly alerts, SSRF-safe webhooks, Celery beat |
+| Tracing | `app/core/tracing.py` | OpenTelemetry spans for analyses, LLM calls, tools, SQL and sandboxes |
+| Sandbox backends | `app/services/sandbox/` | Docker (default, optional gVisor runtime) or Modal sandboxes |
+| Evaluation | `backend/evals` | Deterministic benchmark data, 67 cases, scorers, repeated/parallel runner, model comparison |
 | Observability | `app/core/logging.py`, `app/core/metrics.py` | Structured JSON logs with request/analysis/user context, Prometheus metrics |
 | Background jobs | `app/workers` | Celery tasks, inline dispatch for tests, stale-job reaper |
 
@@ -77,6 +85,14 @@ flowchart LR
   replicas without sticky sessions; Redis is only the job queue.
 - **Provider abstraction.** The agent depends on `LLMProvider`; the OpenAI-compatible client covers OpenAI,
   Azure OpenAI, Ollama, vLLM and LM Studio through configuration.
+
+## Deployment shapes
+
+- **Docker Compose (local or a single VM):** API, worker (thread pool), beat, Postgres, Redis, sandbox image, frontend;
+  `docker-compose.observability.yml` adds Prometheus, Grafana and Jaeger.
+- **Platform hosts without Docker (Render, Fly, Railway):** `SANDBOX_BACKEND=modal` runs generated Python in Modal
+  sandboxes and `RUN_ANALYSES_INLINE=true` runs analyses in the API process for a single-service demo. See
+  [deployment](deployment.md).
 
 ## Extending
 
