@@ -42,18 +42,36 @@ def _severity(score: float, thresholds: tuple[float, float, float]) -> str:
     return "low" if magnitude >= low else "none"
 
 
-def _make(metric: str, dimension: str | None, key: Any, observed: float, baseline: float | None, score: float | None,
-          method: str, severity: str) -> Anomaly:
+def _make(
+    metric: str,
+    dimension: str | None,
+    key: Any,
+    observed: float,
+    baseline: float | None,
+    score: float | None,
+    method: str,
+    severity: str,
+) -> Anomaly:
     deviation = observed - baseline if baseline is not None else None
     deviation_pct = (deviation / abs(baseline) * 100) if baseline not in (None, 0) and deviation is not None else None
     return Anomaly(
-        metric=metric, dimension=dimension, key=str(key), observed=_f(observed) or 0.0, baseline=_f(baseline),
-        deviation=_f(deviation), deviation_pct=_f(deviation_pct, 2), score=_f(score, 3), method=method,
-        severity=severity, direction="spike" if (deviation or 0) > 0 else "drop",
+        metric=metric,
+        dimension=dimension,
+        key=str(key),
+        observed=_f(observed) or 0.0,
+        baseline=_f(baseline),
+        deviation=_f(deviation),
+        deviation_pct=_f(deviation_pct, 2),
+        score=_f(score, 3),
+        method=method,
+        severity=severity,
+        direction="spike" if (deviation or 0) > 0 else "drop",
     )
 
 
-def detect_zscore(series: pd.Series, metric: str, dimension: str | None = None, threshold: float = 3.0) -> list[Anomaly]:
+def detect_zscore(
+    series: pd.Series, metric: str, dimension: str | None = None, threshold: float = 3.0
+) -> list[Anomaly]:
     values = pd.to_numeric(series, errors="coerce")
     mean, std = values.mean(), values.std(ddof=0)
     if not std or np.isnan(std):
@@ -64,8 +82,18 @@ def detect_zscore(series: pd.Series, metric: str, dimension: str | None = None, 
             continue
         z = (value - mean) / std
         if abs(z) >= threshold:
-            out.append(_make(metric, dimension, key, float(value), float(mean), float(z), "zscore",
-                             _severity(z, (threshold, threshold + 1, threshold + 2))))
+            out.append(
+                _make(
+                    metric,
+                    dimension,
+                    key,
+                    float(value),
+                    float(mean),
+                    float(z),
+                    "zscore",
+                    _severity(z, (threshold, threshold + 1, threshold + 2)),
+                )
+            )
     return out
 
 
@@ -81,14 +109,29 @@ def detect_iqr(series: pd.Series, metric: str, dimension: str | None = None, k: 
         if pd.isna(value) or low <= value <= high:
             continue
         distance = (value - high) / iqr if value > high and iqr else (low - value) / iqr if iqr else 0
-        out.append(_make(metric, dimension, key, float(value), median, float(distance), "iqr",
-                         _severity(distance, (0.0, 1.5, 3.0))))
+        out.append(
+            _make(
+                metric,
+                dimension,
+                key,
+                float(value),
+                median,
+                float(distance),
+                "iqr",
+                _severity(distance, (0.0, 1.5, 3.0)),
+            )
+        )
     return out
 
 
 def detect_rolling(
-    series: pd.Series, metric: str, dimension: str | None = None, window: int = 7, threshold: float = 3.0,
-    seasonal_period: int | None = None, log_scale: bool | None = None,
+    series: pd.Series,
+    metric: str,
+    dimension: str | None = None,
+    window: int = 7,
+    threshold: float = 3.0,
+    seasonal_period: int | None = None,
+    log_scale: bool | None = None,
 ) -> list[Anomaly]:
     """Compare each point to a trailing baseline (excluding the point itself).
 
@@ -103,7 +146,7 @@ def detect_rolling(
         # to near zero is not hidden by large day-to-day swings.
         mean = float(raw.mean() or 0)
         log_scale = bool(raw.min() >= 0 and mean > 0 and float(raw.std(ddof=0)) / mean > 0.3)
-    values = np.log1p(raw) if log_scale else raw
+    values = pd.Series(np.log1p(raw.to_numpy()), index=raw.index) if log_scale else raw
     if seasonal_period and values.size >= seasonal_period * 4:
         shifted = pd.concat([values.shift(seasonal_period * i) for i in range(1, 5)], axis=1)
         baseline = shifted.median(axis=1)
@@ -128,14 +171,29 @@ def detect_rolling(
         z = (observed - base) / sd
         if abs(z) >= threshold:
             shown_base = float(np.expm1(base)) if log_scale else float(base)
-            out.append(_make(metric, dimension, key, float(raw[key]), shown_base, float(z), method,
-                             _severity(z, (threshold, threshold + 1.5, threshold + 3))))
+            out.append(
+                _make(
+                    metric,
+                    dimension,
+                    key,
+                    float(raw[key]),
+                    shown_base,
+                    float(z),
+                    method,
+                    _severity(z, (threshold, threshold + 1.5, threshold + 3)),
+                )
+            )
     return out
 
 
 def detect_isolation_forest(
-    frame: pd.DataFrame, metric: str, features: list[str] | None = None, contamination: float = 0.02,
-    dimension: str | None = None, key_column: str | None = None, random_state: int = 42,
+    frame: pd.DataFrame,
+    metric: str,
+    features: list[str] | None = None,
+    contamination: float = 0.02,
+    dimension: str | None = None,
+    key_column: str | None = None,
+    random_state: int = 42,
 ) -> list[Anomaly]:
     features = features or [metric]
     data = frame[features].apply(pd.to_numeric, errors="coerce").dropna()
@@ -153,8 +211,18 @@ def detect_isolation_forest(
             continue
         key = frame.loc[idx, key_column] if key_column else idx
         rel = (score - cutoff) / spread
-        out.append(_make(metric, dimension, key, float(data.loc[idx, metric]), median, float(score),
-                         "isolation_forest", "high" if rel > 2 else "medium" if rel > 0.5 else "low"))
+        out.append(
+            _make(
+                metric,
+                dimension,
+                key,
+                float(data.loc[idx, metric]),
+                median,
+                float(score),
+                "isolation_forest",
+                "high" if rel > 2 else "medium" if rel > 0.5 else "low",
+            )
+        )
     return out
 
 

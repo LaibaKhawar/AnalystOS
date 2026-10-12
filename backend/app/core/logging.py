@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from contextvars import ContextVar
 from typing import Any
 
@@ -17,7 +18,7 @@ dataset_id_var: ContextVar[str | None] = ContextVar("dataset_id", default=None)
 _SECRET_KEYS = ("password", "secret", "api_key", "token", "authorization", "encryption_key")
 
 
-def _add_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def _add_context(_: Any, __: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
     for name, var in (
         ("request_id", request_id_var),
         ("user_id", user_id_var),
@@ -30,7 +31,7 @@ def _add_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     return event_dict
 
 
-def _redact(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def _redact(_: Any, __: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
     for key in list(event_dict):
         if any(marker in key.lower() for marker in _SECRET_KEYS):
             event_dict[key] = "[REDACTED]"
@@ -39,6 +40,8 @@ def _redact(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
 
 def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level.upper())
+    for noisy in ("fontTools", "weasyprint", "matplotlib", "httpx", "httpcore", "docker", "urllib3"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     renderer: Any = structlog.processors.JSONRenderer() if json_output else structlog.dev.ConsoleRenderer()
     structlog.configure(
         processors=[
@@ -57,4 +60,4 @@ def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)  # type: ignore[no-any-return]
+    return structlog.get_logger(name)

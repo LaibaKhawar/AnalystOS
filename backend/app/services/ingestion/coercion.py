@@ -13,8 +13,18 @@ import duckdb
 from app.services.ingestion.naming import quote_ident, sql_string
 
 PARSE_THRESHOLD = 0.97
-_DATE_FORMATS = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%d.%m.%Y", "%b %d, %Y", "%d %b %Y",
-                 "%B %d, %Y", "%Y-%m"]
+_DATE_FORMATS = [
+    "%Y-%m-%d",
+    "%m/%d/%Y",
+    "%d/%m/%Y",
+    "%d-%m-%Y",
+    "%Y/%m/%d",
+    "%d.%m.%Y",
+    "%b %d, %Y",
+    "%d %b %Y",
+    "%B %d, %Y",
+    "%Y-%m",
+]
 _DATETIME_FORMATS = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M"]
 
 
@@ -59,9 +69,7 @@ def coerce_text_columns(con: duckdb.DuckDBPyConnection, table: str) -> list[Coer
         if best:
             fmt, sql_type, ambiguous = best
             _replace(con, table, name, f"TRY_STRPTIME(trim({col}), {sql_string(fmt)})::{sql_type}", sql_type)
-            applied.append(
-                Coercion(column=name, to_type=sql_type.lower(), date_format=fmt, ambiguous=ambiguous)
-            )
+            applied.append(Coercion(column=name, to_type=sql_type.lower(), date_format=fmt, ambiguous=ambiguous))
     _shrink_integer_doubles(con, table, [c.column for c in applied if c.to_type == "float"])
     return applied
 
@@ -82,9 +90,7 @@ def _detect_unit(con: duckdb.DuckDBPyConnection, table: str, col: str) -> str | 
     return None
 
 
-def _best_temporal_format(
-    con: duckdb.DuckDBPyConnection, table: str, col: str
-) -> tuple[str, str, bool] | None:
+def _best_temporal_format(con: duckdb.DuckDBPyConnection, table: str, col: str) -> tuple[str, str, bool] | None:
     scores: list[tuple[float, str, str]] = []
     for fmt in _DATETIME_FORMATS:
         rate, total = _rate(con, table, f"TRY_STRPTIME(trim({col}), {sql_string(fmt)})", col)
@@ -98,9 +104,7 @@ def _best_temporal_format(
         return None
     scores.sort(key=lambda s: -s[0])
     rate, fmt, sql_type = scores[0]
-    ambiguous = any(
-        s[0] == rate and {s[1], fmt} == {"%m/%d/%Y", "%d/%m/%Y"} for s in scores[1:]
-    )
+    ambiguous = any(s[0] == rate and {s[1], fmt} == {"%m/%d/%Y", "%d/%m/%Y"} for s in scores[1:])
     return fmt, sql_type, ambiguous
 
 

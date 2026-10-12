@@ -40,7 +40,7 @@ def test_cost_estimation_configurable() -> None:
 
 
 def test_reasoning_blocks_are_stripped() -> None:
-    assert strip_reasoning("<think>secret plan</think>\n{\"a\": 1}") == '{"a": 1}'
+    assert strip_reasoning('<think>secret plan</think>\n{"a": 1}') == '{"a": 1}'
     assert strip_reasoning("<think>unterminated") == ""
 
 

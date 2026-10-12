@@ -72,8 +72,9 @@ def render_conversation(conversation: Conversation, current_analysis_id: str) ->
 
 
 class AnalysisRunner:
-    def __init__(self, db: Session, llm: LLMProvider, *, sandbox: DockerSandbox | None = None,
-                 emit_events: bool = True) -> None:
+    def __init__(
+        self, db: Session, llm: LLMProvider, *, sandbox: DockerSandbox | None = None, emit_events: bool = True
+    ) -> None:
         self.db = db
         self.llm = llm
         self.settings = get_settings()
@@ -97,18 +98,33 @@ class AnalysisRunner:
         try:
             source = self.db.get(DataSource, analysis.data_source_id)
             conversation = self.db.get(Conversation, analysis.conversation_id)
-            assert source is not None and conversation is not None
+            assert source is not None
+            assert conversation is not None
             events.emit("status", "Inspecting dataset", phase="context")
             engine = engine_for(self.db, source)
-            ctx = ToolContext(db=self.db, analysis_id=analysis.id, user_id=analysis.user_id, source=source,
-                              engine=engine, catalog=catalog_for(source), sandbox=self.sandbox, events=events)
+            ctx = ToolContext(
+                db=self.db,
+                analysis_id=analysis.id,
+                user_id=analysis.user_id,
+                source=source,
+                engine=engine,
+                catalog=catalog_for(source),
+                sandbox=self.sandbox,
+                events=events,
+            )
             schema_text = render_schema(source)
             conversation_text = render_conversation(conversation, analysis.id)
             planner = Planner(self.llm, self.tools, call_log, self.settings.agent_max_steps)
 
             events.emit("status", "Planning the analysis", phase="planning")
-            plan = planner.plan(analysis.question, schema_text, self.catalog_text, conversation_text,
-                                engine.dialect, column_guide(source))
+            plan = planner.plan(
+                analysis.question,
+                schema_text,
+                self.catalog_text,
+                conversation_text,
+                engine.dialect,
+                column_guide(source),
+            )
             analysis.plan = plan.model_dump()
             self.db.commit()
             events.emit("plan", f"Plan with {len(plan.steps)} steps", plan=analysis.plan)
@@ -122,21 +138,36 @@ class AnalysisRunner:
 
             # Observe -> revise (bounded).
             replans = 0
-            while (replans < self.settings.agent_max_replans and len(states) < self.settings.agent_max_steps
-                   and self._needs_revision(states)):
+            while (
+                replans < self.settings.agent_max_replans
+                and len(states) < self.settings.agent_max_steps
+                and self._needs_revision(states)
+            ):
                 budget = min(3, self.settings.agent_max_steps - len(states))
                 events.emit("status", "Reviewing intermediate results", phase="revising")
-                revision = planner.revise(analysis.question, plan.goal, schema_text, self.catalog_text,
-                                          self._observations(states), [s.plan for s in states], budget)
+                revision = planner.revise(
+                    analysis.question,
+                    plan.goal,
+                    schema_text,
+                    self.catalog_text,
+                    self._observations(states),
+                    [s.plan for s in states],
+                    budget,
+                )
                 if not revision.additional_steps:
                     break
                 replans += 1
                 analysis.replans = replans
-                events.emit("replan", f"Plan revised: {len(revision.additional_steps)} step(s) added",
-                            reason=revision.reason[:300],
-                            steps=[s.model_dump() for s in revision.additional_steps])
-                new_states = [self._add_step(analysis, step, len(states) + i, replan=True)
-                              for i, step in enumerate(revision.additional_steps)]
+                events.emit(
+                    "replan",
+                    f"Plan revised: {len(revision.additional_steps)} step(s) added",
+                    reason=revision.reason[:300],
+                    steps=[s.model_dump() for s in revision.additional_steps],
+                )
+                new_states = [
+                    self._add_step(analysis, step, len(states) + i, replan=True)
+                    for i, step in enumerate(revision.additional_steps)
+                ]
                 states.extend(new_states)
                 plan.steps.extend(revision.additional_steps)
                 analysis.plan = plan.model_dump()
@@ -148,11 +179,22 @@ class AnalysisRunner:
             charts = self.db.query(Chart).filter(Chart.analysis_id == analysis.id).all()
             numeric = len(ctx.findings)
             events.emit("status", f"Drafting answer from {numeric} computed findings", phase="synthesis")
-            failures = [f"{s.plan.title}: {s.outcome.error.message[:200]}" for s in states
-                        if s.outcome and not s.outcome.ok and s.outcome.error]
-            draft = draft_answer(self.llm, call_log, question=analysis.question, goal=plan.goal,
-                                 assumptions=plan.assumptions, findings=ctx.findings, charts=charts, failures=failures,
-                                 conversation=conversation_text)
+            failures = [
+                f"{s.plan.title}: {s.outcome.error.message[:200]}"
+                for s in states
+                if s.outcome and not s.outcome.ok and s.outcome.error
+            ]
+            draft = draft_answer(
+                self.llm,
+                call_log,
+                question=analysis.question,
+                goal=plan.goal,
+                assumptions=plan.assumptions,
+                findings=ctx.findings,
+                charts=charts,
+                failures=failures,
+                conversation=conversation_text,
+            )
             draft_dict = draft.model_dump()
             sentence_count = sum(len(draft_dict[k]) for k in ("summary", "facts", "interpretations", "recommendations"))
             events.emit("status", f"Verifying {sentence_count} claims against computed results", phase="verification")
@@ -162,9 +204,12 @@ class AnalysisRunner:
             persist_claims(self.db, analysis, report, ctx.findings)
             charts_ok, charts_total = verify_charts(self.db, analysis.id)
             verification = {**report.stats(), "charts_verified": charts_ok, "charts_total": charts_total}
-            events.emit("verification", f"{verification['verified']} claims verified, {verification['removed']} "
-                                        f"unsupported removed, {charts_ok}/{charts_total} charts verified",
-                        **verification)
+            events.emit(
+                "verification",
+                f"{verification['verified']} claims verified, {verification['removed']} "
+                f"unsupported removed, {charts_ok}/{charts_total} charts verified",
+                **verification,
+            )
 
             kept = [c for c in report.claims if c.status != "removed"]
             analysis.answer = {
@@ -180,8 +225,11 @@ class AnalysisRunner:
             analysis.summary = report.headline
             update_conversation_state(conversation, analysis, plan.context_update.model_dump(), report.headline)
             store_memory(self.db, analysis, report, self.llm.embed)
-            self.db.add(Message(conversation_id=conversation.id, role="assistant", content=report.headline,
-                                analysis_id=analysis.id))
+            self.db.add(
+                Message(
+                    conversation_id=conversation.id, role="assistant", content=report.headline, analysis_id=analysis.id
+                )
+            )
             if ctx.report_requested:
                 from app.services.reports.builder import build_report
 
@@ -219,8 +267,15 @@ class AnalysisRunner:
 
     # ------------------------------------------------------------------------------------------------
     def _add_step(self, analysis: Analysis, step: PlanStep, ordinal: int, replan: bool = False) -> StepState:
-        record = AnalysisStep(analysis_id=analysis.id, ordinal=ordinal, title=step.title[:300], tool=step.tool,
-                              purpose=step.expected_output, depends_on=step.depends_on, added_by_replan=replan)
+        record = AnalysisStep(
+            analysis_id=analysis.id,
+            ordinal=ordinal,
+            title=step.title[:300],
+            tool=step.tool,
+            purpose=step.expected_output,
+            depends_on=step.depends_on,
+            added_by_replan=replan,
+        )
         self.db.add(record)
         self.db.flush()
         return StepState(plan=step, record=record)
@@ -230,8 +285,15 @@ class AnalysisRunner:
         if analysis.cancel_requested:
             raise AnalysisCancelled()
 
-    def _execute_steps(self, states: list[StepState], ctx: ToolContext, runner: ToolRunner, planner: Planner,
-                       schema_text: str, analysis: Analysis) -> None:
+    def _execute_steps(
+        self,
+        states: list[StepState],
+        ctx: ToolContext,
+        runner: ToolRunner,
+        planner: Planner,
+        schema_text: str,
+        analysis: Analysis,
+    ) -> None:
         failed_ids = {s.plan.id for s in states if s.outcome and not s.outcome.ok}
         for state in states:
             self._check_cancel(analysis)
@@ -256,19 +318,38 @@ class AnalysisRunner:
                 record.result_summary = outcome.result.summary[:4000]
                 if outcome.result.result_table_id:
                     ctx.step_results[step.id] = outcome.result.result_table_id
-                ctx.events.emit("step_completed", step.title, step_id=step.id, tool=record.tool,
-                                execution_id=outcome.execution_id, findings=outcome.finding_labels[:20],
-                                chart_ids=outcome.result.chart_ids, result_id=outcome.result.result_table_id)
+                ctx.events.emit(
+                    "step_completed",
+                    step.title,
+                    step_id=step.id,
+                    tool=record.tool,
+                    execution_id=outcome.execution_id,
+                    findings=outcome.finding_labels[:20],
+                    chart_ids=outcome.result.chart_ids,
+                    result_id=outcome.result.result_table_id,
+                )
             else:
                 record.status = "failed"
                 record.result_summary = (outcome.error.message if outcome.error else "failed")[:2000]
                 failed_ids.add(step.id)
-                ctx.events.emit("step_failed", f"{step.title}: {record.result_summary[:200]}", step_id=step.id,
-                                tool=record.tool, error_kind=outcome.error.kind if outcome.error else None)
+                ctx.events.emit(
+                    "step_failed",
+                    f"{step.title}: {record.result_summary[:200]}",
+                    step_id=step.id,
+                    tool=record.tool,
+                    error_kind=outcome.error.kind if outcome.error else None,
+                )
             self.db.commit()
 
-    def _run_with_retries(self, step: PlanStep, record: AnalysisStep, ctx: ToolContext, runner: ToolRunner,
-                          planner: Planner, schema_text: str) -> ToolOutcome:
+    def _run_with_retries(
+        self,
+        step: PlanStep,
+        record: AnalysisStep,
+        ctx: ToolContext,
+        runner: ToolRunner,
+        planner: Planner,
+        schema_text: str,
+    ) -> ToolOutcome:
         tool, args = step.tool, _resolve_refs(step.args, ctx.step_results)
         history: list[str] = []
         previous_id: str | None = None
@@ -283,8 +364,9 @@ class AnalysisRunner:
             if signature in seen_calls:  # the repair produced an identical call: stop instead of looping
                 break
             seen_calls.add(signature)
-            outcome = runner.execute(tool, args, step_id=record.id, attempt=attempt, retry_of=previous_id,
-                                     retry_reason=reason)
+            outcome = runner.execute(
+                tool, args, step_id=record.id, attempt=attempt, retry_of=previous_id, retry_reason=reason
+            )
             if outcome.ok:
                 record.tool = tool
                 return outcome
@@ -293,8 +375,13 @@ class AnalysisRunner:
             if not error.recoverable or attempt == max_attempts:
                 break
             TOOL_RETRIES.labels(tool=tool).inc()
-            ctx.events.emit("retry", f"Retrying {step.title} after {error.kind.replace('_', ' ')}",
-                            step_id=step.id, attempt=attempt + 1, error_kind=error.kind)
+            ctx.events.emit(
+                "retry",
+                f"Retrying {step.title} after {error.kind.replace('_', ' ')}",
+                step_id=step.id,
+                attempt=attempt + 1,
+                error_kind=error.kind,
+            )
             corrected = _auto_correct(args, error)
             if corrected is not None and tool + json.dumps(corrected, sort_keys=True, default=str) not in seen_calls:
                 previous_id = outcome.execution_id
@@ -310,8 +397,9 @@ class AnalysisRunner:
         assert outcome is not None
         return outcome
 
-    def _repair_unsupported(self, report: Any, ctx: ToolContext, call_log: CallLog, exempt: list[str],
-                            events: EventEmitter) -> None:
+    def _repair_unsupported(
+        self, report: Any, ctx: ToolContext, call_log: CallLog, exempt: list[str], events: EventEmitter
+    ) -> None:
         """Give the model one chance to restate rejected sentences from the findings; re-verify the result."""
         numeric = report.numeric_claims
         report.draft_numeric = len(numeric)
@@ -321,8 +409,9 @@ class AnalysisRunner:
             return
         events.emit("status", f"Re-checking {len(rejected)} unsupported statement(s)", phase="verification")
         try:
-            rewrite = rewrite_unsupported(self.llm, call_log, sentences=[(c.text, c.unsupported) for c in rejected[:10]],
-                                          findings=ctx.findings)
+            rewrite = rewrite_unsupported(
+                self.llm, call_log, sentences=[(c.text, c.unsupported) for c in rejected[:10]], findings=ctx.findings
+            )
         except LLMError:
             return
         by_label = {f.label.upper(): f for f in ctx.findings}
@@ -330,8 +419,9 @@ class AnalysisRunner:
             if not (0 <= item.index < len(rejected)) or not item.text.strip():
                 continue
             original = rejected[item.index]
-            check = verify_sentence(item.text, item.citations, by_label, section=original.section,
-                                    kind=original.kind, exempt_phrases=exempt)
+            check = verify_sentence(
+                item.text, item.citations, by_label, section=original.section, kind=original.kind, exempt_phrases=exempt
+            )
             if check.status in {"verified", "qualified"}:
                 check.notes.append(f"rewritten after verification rejected: {original.text[:200]}")
                 check.original_text = check.original_text or original.text
@@ -361,7 +451,9 @@ class AnalysisRunner:
                 flag = " [NOTABLE]" if outcome.result.notable else ""
                 lines.append(f"{state.plan.id} ({outcome.tool}){flag}: {outcome.result.summary[:900]}")
             else:
-                lines.append(f"{state.plan.id} ({outcome.tool}) FAILED: {outcome.error.message[:300] if outcome.error else ''}")
+                lines.append(
+                    f"{state.plan.id} ({outcome.tool}) FAILED: {outcome.error.message[:300] if outcome.error else ''}"
+                )
         return "\n".join(lines)[:12000]
 
     def _ensure_chart(self, ctx: ToolContext, runner: ToolRunner, states: list[StepState]) -> None:
@@ -380,30 +472,46 @@ class AnalysisRunner:
             if not choice:
                 continue
             chart_type, x, y = choice
-            outcome = runner.execute("create_chart", {"result_id": result_id, "chart_type": chart_type, "x": x,
-                                                      "y": y, "title": table.name[:120]})
+            outcome = runner.execute(
+                "create_chart",
+                {"result_id": result_id, "chart_type": chart_type, "x": x, "y": y, "title": table.name[:120]},
+            )
             if outcome.ok:
-                ctx.events.emit("step_completed", f"Created chart: {table.name[:80]}", tool="create_chart",
-                                chart_ids=outcome.result.chart_ids if outcome.result else [])
+                ctx.events.emit(
+                    "step_completed",
+                    f"Created chart: {table.name[:80]}",
+                    tool="create_chart",
+                    chart_ids=outcome.result.chart_ids if outcome.result else [],
+                )
                 return
 
     def _exempt_phrases(self, question: str, ctx: ToolContext) -> list[str]:
         phrases: list[str] = []
         for finding in ctx.findings:
-            phrases.extend(str(e) for e in (finding.payload or {}).get("entities", []) if any(ch.isdigit() for ch in str(e)))
+            phrases.extend(
+                str(e) for e in (finding.payload or {}).get("entities", []) if any(ch.isdigit() for ch in str(e))
+            )
         for table in ctx.tables:
             phrases.extend(c.original_name for c in table.columns if any(ch.isdigit() for ch in c.original_name))
             phrases.extend(c.name for c in table.columns if any(ch.isdigit() for ch in c.name))
         # Numbers from the user's question are NOT exempt: echoing "fell 20%?" back as fact must be verified.
         return [p for p in phrases if p]
 
-    def _clarify(self, analysis: Analysis, conversation: Conversation, plan: Plan, call_log: CallLog,
-                 started: float, events: EventEmitter) -> Analysis:
+    def _clarify(
+        self,
+        analysis: Analysis,
+        conversation: Conversation,
+        plan: Plan,
+        call_log: CallLog,
+        started: float,
+        events: EventEmitter,
+    ) -> Analysis:
         question = plan.clarification_question or "Could you clarify the question?"
         analysis.answer = {"headline": question, "clarification": True, "assumptions": plan.assumptions}
         analysis.summary = question
-        self.db.add(Message(conversation_id=conversation.id, role="assistant", content=question,
-                            analysis_id=analysis.id))
+        self.db.add(
+            Message(conversation_id=conversation.id, role="assistant", content=question, analysis_id=analysis.id)
+        )
         self._finish(analysis, "needs_clarification", call_log, started)
         self.db.commit()
         events.emit("clarification", question)
@@ -417,8 +525,9 @@ class AnalysisRunner:
         analysis.input_tokens = call_log.usage.input_tokens
         analysis.output_tokens = call_log.usage.output_tokens
         analysis.llm_calls = call_log.calls
-        analysis.cost_usd = estimate_cost(analysis.model or "", call_log.usage.input_tokens,
-                                          call_log.usage.output_tokens)
+        analysis.cost_usd = estimate_cost(
+            analysis.model or "", call_log.usage.input_tokens, call_log.usage.output_tokens
+        )
         ANALYSIS_LATENCY.labels(status=status).observe(analysis.latency_ms / 1000)
 
 

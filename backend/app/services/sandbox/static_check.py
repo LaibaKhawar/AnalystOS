@@ -10,22 +10,113 @@ import ast
 from dataclasses import dataclass, field
 
 ALLOWED_MODULES = {
-    "pandas", "numpy", "scipy", "sklearn", "matplotlib", "statsmodels", "math", "statistics", "datetime",
-    "json", "re", "collections", "itertools", "functools", "decimal", "fractions", "random", "typing",
-    "dataclasses", "string", "textwrap", "operator", "calendar", "warnings", "heapq", "bisect",
+    "pandas",
+    "numpy",
+    "scipy",
+    "sklearn",
+    "matplotlib",
+    "statsmodels",
+    "math",
+    "statistics",
+    "datetime",
+    "json",
+    "re",
+    "collections",
+    "itertools",
+    "functools",
+    "decimal",
+    "fractions",
+    "random",
+    "typing",
+    "dataclasses",
+    "string",
+    "textwrap",
+    "operator",
+    "calendar",
+    "warnings",
+    "heapq",
+    "bisect",
 }
 FORBIDDEN_CALLS = {
-    "eval", "exec", "compile", "__import__", "open", "input", "breakpoint", "globals", "locals", "vars",
-    "getattr", "setattr", "delattr", "exit", "quit", "help", "memoryview", "license", "credits",
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+    "open",
+    "input",
+    "breakpoint",
+    "globals",
+    "locals",
+    "vars",
+    "getattr",
+    "setattr",
+    "delattr",
+    "exit",
+    "quit",
+    "help",
+    "memoryview",
+    "license",
+    "credits",
 }
 FORBIDDEN_ATTRIBUTES = {
-    "system", "popen", "spawn", "fork", "environ", "getenv", "load", "loads", "save", "savez", "savez_compressed",
-    "loadtxt", "savetxt", "genfromtxt", "fromfile", "tofile", "memmap", "savefig", "imread", "imsave",
-    "read_sql", "read_sql_query", "read_sql_table", "read_html", "read_clipboard", "to_clipboard", "read_pickle",
-    "to_pickle", "read_csv", "read_excel", "read_json", "read_parquet", "read_feather", "read_orc", "read_xml",
-    "read_hdf", "read_stata", "read_sas", "read_spss", "read_fwf", "read_table", "read_gbq", "to_csv", "to_excel",
-    "to_json", "to_parquet", "to_feather", "to_hdf", "to_sql", "to_stata", "to_orc", "to_xml", "to_gbq",
-    "to_latex", "to_html", "dump", "dumps_to_file", "urlopen",
+    "system",
+    "popen",
+    "spawn",
+    "fork",
+    "environ",
+    "getenv",
+    "load",
+    "loads",
+    "save",
+    "savez",
+    "savez_compressed",
+    "loadtxt",
+    "savetxt",
+    "genfromtxt",
+    "fromfile",
+    "tofile",
+    "memmap",
+    "savefig",
+    "imread",
+    "imsave",
+    "read_sql",
+    "read_sql_query",
+    "read_sql_table",
+    "read_html",
+    "read_clipboard",
+    "to_clipboard",
+    "read_pickle",
+    "to_pickle",
+    "read_csv",
+    "read_excel",
+    "read_json",
+    "read_parquet",
+    "read_feather",
+    "read_orc",
+    "read_xml",
+    "read_hdf",
+    "read_stata",
+    "read_sas",
+    "read_spss",
+    "read_fwf",
+    "read_table",
+    "read_gbq",
+    "to_csv",
+    "to_excel",
+    "to_json",
+    "to_parquet",
+    "to_feather",
+    "to_hdf",
+    "to_sql",
+    "to_stata",
+    "to_orc",
+    "to_xml",
+    "to_gbq",
+    "to_latex",
+    "to_html",
+    "dump",
+    "dumps_to_file",
+    "urlopen",
 }
 
 
@@ -71,19 +162,36 @@ class _Checker(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if node.attr.startswith("__") or node.attr.startswith("_abc") or node.attr in {"f_globals", "f_locals",
-                                                                                        "gi_frame", "tb_frame",
-                                                                                        "co_code", "func_globals"}:
+        if (
+            node.attr.startswith("__")
+            or node.attr.startswith("_abc")
+            or node.attr in {"f_globals", "f_locals", "gi_frame", "tb_frame", "co_code", "func_globals"}
+        ):
             self._flag(node, f"access to attribute '{node.attr}' is not allowed")
         elif node.attr in FORBIDDEN_ATTRIBUTES:
-            self._flag(node, f"'.{node.attr}' (file, network or process access) is not allowed; "
-                             "use the provided dataframes and assign the answer to `result`")
+            self._flag(
+                node,
+                f"'.{node.attr}' (file, network or process access) is not allowed; "
+                "use the provided dataframes and assign the answer to `result`",
+            )
         self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant) -> None:
-        if isinstance(node.value, str) and ("__" in node.value and any(
-                k in node.value for k in ("__class__", "__subclasses__", "__globals__", "__builtins__",
-                                          "__import__", "__mro__", "__bases__"))):
+        if isinstance(node.value, str) and (
+            "__" in node.value
+            and any(
+                k in node.value
+                for k in (
+                    "__class__",
+                    "__subclasses__",
+                    "__globals__",
+                    "__builtins__",
+                    "__import__",
+                    "__mro__",
+                    "__bases__",
+                )
+            )
+        ):
             self._flag(node, "suspicious dunder string literal")
         self.generic_visit(node)
 
@@ -107,8 +215,10 @@ def check_code(code: str, max_chars: int = 20_000) -> StaticCheckResult:
     checker.visit(tree)
     assigns_result = any(
         isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign)
-        and any(isinstance(t, ast.Name) and t.id == "result"
-                for t in (node.targets if isinstance(node, ast.Assign) else [node.target]))
+        and any(
+            isinstance(t, ast.Name) and t.id == "result"
+            for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        )
         for node in ast.walk(tree)
     )
     if not assigns_result:

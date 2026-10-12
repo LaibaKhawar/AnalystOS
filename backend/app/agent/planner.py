@@ -19,15 +19,19 @@ class Planner:
         self.log = log
         self.max_steps = max_steps
 
-    def plan(self, question: str, schema_text: str, catalog: str, conversation: str, dialect: str,
-             column_guide: str = "") -> Plan:
+    def plan(
+        self, question: str, schema_text: str, catalog: str, conversation: str, dialect: str, column_guide: str = ""
+    ) -> Plan:
         messages = [
             {"role": "system", "content": PLANNER_SYSTEM + "\n\nTOOLS:\n" + catalog},
-            {"role": "user", "content": (
-                f"SQL dialect for execute_sql: {dialect}\n\n<data>\n{schema_text}\n</data>\n\n"
-                f"Conversation context:\n<data>\n{conversation or 'none (first question)'}\n</data>\n\n"
-                f"{column_guide}\n\nQUESTION: {question}\n\nReturn the plan JSON."
-            )},
+            {
+                "role": "user",
+                "content": (
+                    f"SQL dialect for execute_sql: {dialect}\n\n<data>\n{schema_text}\n</data>\n\n"
+                    f"Conversation context:\n<data>\n{conversation or 'none (first question)'}\n</data>\n\n"
+                    f"{column_guide}\n\nQUESTION: {question}\n\nReturn the plan JSON."
+                ),
+            },
         ]
         plan = generate_structured(self.llm, messages, Plan, purpose="plan", log=self.log, max_tokens=3000)
         return self.sanitize(plan)
@@ -50,33 +54,55 @@ class Planner:
             plan.steps = [PlanStep(id="s1", title="Inspect the schema", tool="inspect_schema")]
         return plan
 
-    def repair(self, step: PlanStep, tool: str, args: dict[str, Any], error: ToolError, schema_text: str,
-               catalog: str, history: list[str]) -> Repair:
+    def repair(
+        self,
+        step: PlanStep,
+        tool: str,
+        args: dict[str, Any],
+        error: ToolError,
+        schema_text: str,
+        catalog: str,
+        history: list[str],
+    ) -> Repair:
         hints = json.dumps(error.hints, default=str)[:3000]
         messages = [
             {"role": "system", "content": REPAIR_SYSTEM + "\n\nTOOLS:\n" + catalog},
-            {"role": "user", "content": (
-                f"<data>\n{schema_text}\n</data>\n\nStep: {step.title}\nTool: {tool}\n"
-                f"Failed args: {json.dumps(args, default=str)[:2000]}\n"
-                f"Error ({error.kind}): {error.message[:800]}\nHints: <data>{hints}</data>\n"
-                f"Earlier failed attempts: {history[-3:]}\nReturn the corrected call JSON."
-            )},
+            {
+                "role": "user",
+                "content": (
+                    f"<data>\n{schema_text}\n</data>\n\nStep: {step.title}\nTool: {tool}\n"
+                    f"Failed args: {json.dumps(args, default=str)[:2000]}\n"
+                    f"Error ({error.kind}): {error.message[:800]}\nHints: <data>{hints}</data>\n"
+                    f"Earlier failed attempts: {history[-3:]}\nReturn the corrected call JSON."
+                ),
+            },
         ]
         repair = generate_structured(self.llm, messages, Repair, purpose="repair", log=self.log)
         if repair.tool not in self.tools:
             repair.tool = tool
         return repair
 
-    def revise(self, question: str, goal: str, schema_text: str, catalog: str, observations: str,
-               existing: list[PlanStep], budget: int) -> Revision:
+    def revise(
+        self,
+        question: str,
+        goal: str,
+        schema_text: str,
+        catalog: str,
+        observations: str,
+        existing: list[PlanStep],
+        budget: int,
+    ) -> Revision:
         steps_text = "\n".join(f"- {s.id}: {s.tool} {json.dumps(s.args, default=str)[:200]}" for s in existing)
         messages = [
             {"role": "system", "content": REVISER_SYSTEM + "\n\nTOOLS:\n" + catalog},
-            {"role": "user", "content": (
-                f"QUESTION: {question}\nGOAL: {goal}\n\n<data>\n{schema_text}\n</data>\n\n"
-                f"Executed steps:\n{steps_text}\n\nObservations:\n<data>\n{observations}\n</data>\n\n"
-                f"You may add at most {budget} steps. Return the revision JSON."
-            )},
+            {
+                "role": "user",
+                "content": (
+                    f"QUESTION: {question}\nGOAL: {goal}\n\n<data>\n{schema_text}\n</data>\n\n"
+                    f"Executed steps:\n{steps_text}\n\nObservations:\n<data>\n{observations}\n</data>\n\n"
+                    f"You may add at most {budget} steps. Return the revision JSON."
+                ),
+            },
         ]
         revision = generate_structured(self.llm, messages, Revision, purpose="revise", log=self.log, max_tokens=2000)
         existing_ids = {s.id for s in existing}

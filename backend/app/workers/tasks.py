@@ -25,7 +25,7 @@ def execute_analysis(analysis_id: str) -> str:
 
 
 @celery_app.task(name="analystos.run_analysis", bind=True, max_retries=0)
-def run_analysis(self: object, analysis_id: str) -> str:  # noqa: ARG001
+def run_analysis(self: object, analysis_id: str) -> str:
     try:
         return execute_analysis(analysis_id)
     except SoftTimeLimitExceeded:

@@ -32,10 +32,20 @@ def persist_claims(db: Session, analysis: Analysis, report: VerificationReport, 
     created: list[Claim] = []
     for ordinal, check in enumerate(report.claims):
         claim = Claim(
-            analysis_id=analysis.id, ordinal=ordinal, section=check.section, kind=check.kind, text=check.text,
-            original_text=check.original_text, status=check.status, numbers=check.numbers,
-            verification={"matches": [m.__dict__ for m in check.matches], "unsupported": check.unsupported,
-                          "notes": check.notes, "citations": check.citations},
+            analysis_id=analysis.id,
+            ordinal=ordinal,
+            section=check.section,
+            kind=check.kind,
+            text=check.text,
+            original_text=check.original_text,
+            status=check.status,
+            numbers=check.numbers,
+            verification={
+                "matches": [m.__dict__ for m in check.matches],
+                "unsupported": check.unsupported,
+                "notes": check.notes,
+                "citations": check.citations,
+            },
         )
         CLAIMS_VERIFIED.labels(status=check.status).inc()
         attached: set[str] = set()
@@ -65,8 +75,12 @@ def _evidence(db: Session, finding: Finding, derived_formula: str | None, value_
     if derived_formula:
         source_type = "derived"
     return Evidence(
-        finding_id=finding.id, tool_execution_id=finding.tool_execution_id, result_table_id=finding.result_table_id,
-        source_type=source_type, values=finding.values, formula=derived_formula or finding.formula,
+        finding_id=finding.id,
+        tool_execution_id=finding.tool_execution_id,
+        result_table_id=finding.result_table_id,
+        source_type=source_type,
+        values=finding.values,
+        formula=derived_formula or finding.formula,
         description=finding.statement + (f" (matched value: {value_key})" if value_key else ""),
     )
 
@@ -82,8 +96,15 @@ def verify_charts(db: Session, analysis_id: str) -> tuple[int, int]:
             continue
         args = chart.spec.get("args") or {}
         try:
-            _, rebuilt = build_chart(chart.chart_type, source.columns, source.rows, x=args["x"],
-                                     y=list(args.get("y") or []), series=args.get("series"), title=chart.title)
+            _, rebuilt = build_chart(
+                chart.chart_type,
+                source.columns,
+                source.rows,
+                x=args["x"],
+                y=list(args.get("y") or []),
+                series=args.get("series"),
+                title=chart.title,
+            )
             chart.verified = data_hash(rebuilt) == chart.data_hash
         except Exception:
             chart.verified = False
@@ -92,8 +113,9 @@ def verify_charts(db: Session, analysis_id: str) -> tuple[int, int]:
     return ok, len(charts)
 
 
-def update_conversation_state(conversation: Conversation, analysis: Analysis, context_update: dict[str, Any],
-                              headline: str) -> None:
+def update_conversation_state(
+    conversation: Conversation, analysis: Analysis, context_update: dict[str, Any], headline: str
+) -> None:
     state = dict(conversation.state or {})
     if context_update.get("filters") is not None:
         state["filters"] = context_update.get("filters") or []
@@ -116,8 +138,15 @@ def store_memory(db: Session, analysis: Analysis, report: VerificationReport, em
         vector = vectors[0] if vectors else None
     except Exception:
         log.warning("memory_embedding_failed")
-    db.add(AnalysisMemory(analysis_id=analysis.id, user_id=analysis.user_id, data_source_id=analysis.data_source_id,
-                          content=content, embedding=vector))
+    db.add(
+        AnalysisMemory(
+            analysis_id=analysis.id,
+            user_id=analysis.user_id,
+            data_source_id=analysis.data_source_id,
+            content=content,
+            embedding=vector,
+        )
+    )
 
 
 def tool_stats(db: Session, analysis_id: str) -> dict[str, Any]:
@@ -126,5 +155,9 @@ def tool_stats(db: Session, analysis_id: str) -> dict[str, Any]:
     failed = [e for e in executions if e.status != "success"]
     retries = [e for e in executions if e.attempt > 1]
     recovered = [e for e in retries if e.status == "success"]
-    return {"tool_calls": total, "tool_failures": len(failed), "retries": len(retries),
-            "recovered_retries": len(recovered)}
+    return {
+        "tool_calls": total,
+        "tool_failures": len(failed),
+        "retries": len(retries),
+        "recovered_retries": len(recovered),
+    }

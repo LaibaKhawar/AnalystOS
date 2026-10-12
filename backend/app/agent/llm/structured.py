@@ -58,26 +58,38 @@ class CallLog:
 
 
 def generate_structured(
-    llm: LLMProvider, messages: list[dict[str, Any]], schema: type[T], *, purpose: str, log: CallLog,
-    max_repairs: int = 2, max_tokens: int | None = None,
+    llm: LLMProvider,
+    messages: list[dict[str, Any]],
+    schema: type[T],
+    *,
+    purpose: str,
+    log: CallLog,
+    max_repairs: int = 2,
+    max_tokens: int | None = None,
 ) -> T:
     conversation = list(messages)
     last_error = ""
     for attempt in range(max_repairs + 1):
-        response = llm.complete(conversation, purpose=purpose if attempt == 0 else f"{purpose}_repair",
-                                json_mode=True, max_tokens=max_tokens)
+        response = llm.complete(
+            conversation,
+            purpose=purpose if attempt == 0 else f"{purpose}_repair",
+            json_mode=True,
+            max_tokens=max_tokens,
+        )
         log.record(response, purpose)
         try:
             data = extract_json(response.content)
             return schema.model_validate(data)
         except (ValueError, ValidationError) as exc:
             last_error = _summarise_error(exc)
-            conversation = list(messages) + [
+            conversation = [
+                *list(messages),
                 {"role": "assistant", "content": response.content[:4000]},
-                {"role": "user", "content": (
-                    "Your previous reply was not valid for the required JSON schema. "
-                    f"Problems: {last_error}\nReturn ONLY the corrected JSON object, no prose."
-                )},
+                {
+                    "role": "user",
+                    "content": "Your previous reply was not valid for the required JSON schema. "
+                    f"Problems: {last_error}\nReturn ONLY the corrected JSON object, no prose.",
+                },
             ]
     raise LLMError(f"The model did not return valid structured output for {purpose}: {last_error[:300]}")
 

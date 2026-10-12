@@ -23,18 +23,26 @@ from app.services.datasources.base import (
 )
 
 DEFAULT_PORTS = {"postgresql": 5432, "mysql": 3306}
-_TIMEOUT_MARKERS = ("statement timeout", "canceling statement", "max_execution_time", "query execution was interrupted",
-                    "interrupted")
+_TIMEOUT_MARKERS = (
+    "statement timeout",
+    "canceling statement",
+    "max_execution_time",
+    "query execution was interrupted",
+    "interrupted",
+)
 
 
-def build_url(kind: str, *, host: str | None, port: int | None, database: str | None,
-              username: str | None, password: str | None) -> URL:
+def build_url(
+    kind: str, *, host: str | None, port: int | None, database: str | None, username: str | None, password: str | None
+) -> URL:
     if kind == "postgresql":
-        return URL.create("postgresql+psycopg", username=username, password=password, host=host,
-                          port=port or 5432, database=database)
+        return URL.create(
+            "postgresql+psycopg", username=username, password=password, host=host, port=port or 5432, database=database
+        )
     if kind == "mysql":
-        return URL.create("mysql+pymysql", username=username, password=password, host=host,
-                          port=port or 3306, database=database)
+        return URL.create(
+            "mysql+pymysql", username=username, password=password, host=host, port=port or 3306, database=database
+        )
     if kind == "sqlite":
         if not database:
             raise QueryFailed("SQLite connections need a database file path")
@@ -62,9 +70,11 @@ class SQLAlchemyEngine(QueryEngine):
             }
         elif kind == "sqlite":
             connect_args = {"timeout": 5, "check_same_thread": False}
-        self.engine: Engine = create_engine(url, connect_args=connect_args, pool_pre_ping=True, pool_size=2,
-                                            max_overflow=2) if kind != "sqlite" else create_engine(
-            url, connect_args=connect_args)
+        self.engine: Engine = (
+            create_engine(url, connect_args=connect_args, pool_pre_ping=True, pool_size=2, max_overflow=2)
+            if kind != "sqlite"
+            else create_engine(url, connect_args=connect_args)
+        )
 
     def test(self) -> None:
         try:
@@ -114,8 +124,9 @@ class SQLAlchemyEngine(QueryEngine):
         truncated = len(rows) > max_rows
         rows = rows[:max_rows]
         return QueryResult(
-            columns=[{"name": k, "type": str(t or "")} for k, t in zip(keys, cursor_types + [None] * len(keys),
-                                                                      strict=False)],
+            columns=[
+                {"name": k, "type": str(t or "")} for k, t in zip(keys, cursor_types + [None] * len(keys), strict=False)
+            ],
             rows=[[to_jsonable(v) for v in row] for row in rows],
             truncated=truncated,
             duration_ms=duration,
@@ -126,8 +137,11 @@ class SQLAlchemyEngine(QueryEngine):
         quoted = self.engine.dialect.identifier_preparer.quote(table)
         if self.schema:
             quoted = f"{self.engine.dialect.identifier_preparer.quote(self.schema)}.{quoted}"
-        result = self.execute(f"SELECT * FROM {quoted} LIMIT {int(max_rows)}", max_rows=max_rows,  # noqa: S608
-                              timeout_seconds=60)
+        result = self.execute(
+            f"SELECT * FROM {quoted} LIMIT {int(max_rows)}",
+            max_rows=max_rows,
+            timeout_seconds=60,
+        )
         names = [c["name"] for c in result.columns]
         table_data = pa.table({n: [row[i] for row in result.rows] for i, n in enumerate(names)})
         Path(target).parent.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -12,10 +13,8 @@ from app.core.config import get_settings
 from app.db.base import Base, TimestampMixin, id_column
 
 _DIM = 768
-try:  # settings may be unavailable at import time in tooling contexts
+with contextlib.suppress(Exception):  # settings may be unavailable at import time in tooling contexts
     _DIM = get_settings().embedding_dimensions
-except Exception:  # noqa: S110
-    pass
 
 
 class AnalysisMemory(TimestampMixin, Base):

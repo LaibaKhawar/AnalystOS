@@ -39,15 +39,23 @@ class DuckDBEngine(QueryEngine):
 
     def list_tables(self) -> list[TableInfo]:
         with self._lock:
-            names = [r[0] for r in self._con.execute(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY 1"
-            ).fetchall()]
+            names = [
+                r[0]
+                for r in self._con.execute(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY 1"
+                ).fetchall()
+            ]
             tables = []
             for name in names:
                 cols = self._con.execute(f"DESCRIBE {quote_ident(name)}").fetchall()
                 count = self._con.execute(f"SELECT count(*) FROM {quote_ident(name)}").fetchone()
-                tables.append(TableInfo(name=name, columns=[ColumnInfo(c[0], str(c[1])) for c in cols],
-                                        row_count=int(count[0]) if count else None))
+                tables.append(
+                    TableInfo(
+                        name=name,
+                        columns=[ColumnInfo(c[0], str(c[1])) for c in cols],
+                        row_count=int(count[0]) if count else None,
+                    )
+                )
             return tables
 
     def execute(self, sql: str, *, max_rows: int, timeout_seconds: float) -> QueryResult:

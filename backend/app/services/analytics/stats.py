@@ -102,8 +102,15 @@ def trend(values: pd.Series | list[float]) -> Trend:
     fit = sps.linregress(x, series.to_numpy(dtype=float))
     significant = fit.pvalue is not None and fit.pvalue < 0.05
     direction = ("increasing" if fit.slope > 0 else "decreasing") if significant else "no_significant_trend"
-    return Trend(_f(fit.slope), _f(fit.intercept), _f(fit.rvalue**2), _f(fit.pvalue), n, direction,
-                 _f(pct_change(float(series.iloc[0]), float(series.iloc[-1]))))
+    return Trend(
+        _f(fit.slope),
+        _f(fit.intercept),
+        _f(fit.rvalue**2),
+        _f(fit.pvalue),
+        n,
+        direction,
+        _f(pct_change(float(series.iloc[0]), float(series.iloc[-1]))),
+    )
 
 
 def correlation(x: pd.Series, y: pd.Series, method: str = "pearson") -> dict[str, Any]:
@@ -118,19 +125,41 @@ def correlation(x: pd.Series, y: pd.Series, method: str = "pearson") -> dict[str
         res = sps.pearsonr(frame["x"], frame["y"])
         coef, p = float(res.statistic), float(res.pvalue)
     magnitude = abs(coef)
-    strength = ("very weak" if magnitude < 0.2 else "weak" if magnitude < 0.4 else "moderate" if magnitude < 0.6
-                else "strong" if magnitude < 0.8 else "very strong")
-    return {"method": method, "n": n, "coefficient": _f(coef, 4), "p_value": _f(p, 6), "strength": strength,
-            "significant": p < 0.05, "note": "Correlation does not establish causation."}
+    strength = (
+        "very weak"
+        if magnitude < 0.2
+        else "weak"
+        if magnitude < 0.4
+        else "moderate"
+        if magnitude < 0.6
+        else "strong"
+        if magnitude < 0.8
+        else "very strong"
+    )
+    return {
+        "method": method,
+        "n": n,
+        "coefficient": _f(coef, 4),
+        "p_value": _f(p, 6),
+        "strength": strength,
+        "significant": p < 0.05,
+        "note": "Correlation does not establish causation.",
+    }
 
 
 def compare_groups(a: pd.Series, b: pd.Series) -> dict[str, Any]:
     """Welch's t-test and Mann-Whitney U for two independent samples."""
     a = pd.to_numeric(a, errors="coerce").dropna()
     b = pd.to_numeric(b, errors="coerce").dropna()
-    out: dict[str, Any] = {"n_a": int(a.size), "n_b": int(b.size), "mean_a": _f(a.mean()), "mean_b": _f(b.mean()),
-                           "median_a": _f(a.median()), "median_b": _f(b.median())}
-    out["mean_diff"] = _f((a.mean() - b.mean())) if a.size and b.size else None
+    out: dict[str, Any] = {
+        "n_a": int(a.size),
+        "n_b": int(b.size),
+        "mean_a": _f(a.mean()),
+        "mean_b": _f(b.mean()),
+        "median_a": _f(a.median()),
+        "median_b": _f(b.median()),
+    }
+    out["mean_diff"] = _f(a.mean() - b.mean()) if a.size and b.size else None
     if a.size >= 2 and b.size >= 2:
         t = sps.ttest_ind(a, b, equal_var=False)
         out["welch_t"], out["welch_p"] = _f(t.statistic), _f(t.pvalue)
@@ -157,13 +186,19 @@ def contribution(previous: dict[str, float], current: dict[str, float]) -> list[
         p = float(previous.get(key, 0.0) or 0.0)
         c = float(current.get(key, 0.0) or 0.0)
         change = c - p
-        rows.append({
-            "segment": key, "previous": _f(p), "current": _f(c), "change": _f(change),
-            "pct_change": _f(pct_change(p, c)),
-            "contribution_pct": _f(change / total_change * 100) if total_change else None,
-            "share_of_previous_pct": _f(p / total_prev * 100) if total_prev else None,
-        })
-    rows.sort(key=lambda r: (r["change"] or 0) if total_change >= 0 else -(r["change"] or 0), reverse=True)
+        rows.append(
+            {
+                "segment": key,
+                "previous": _f(p),
+                "current": _f(c),
+                "change": _f(change),
+                "pct_change": _f(pct_change(p, c)),
+                "contribution_pct": _f(change / total_change * 100) if total_change else None,
+                "share_of_previous_pct": _f(p / total_prev * 100) if total_prev else None,
+            }
+        )
+    direction = 1.0 if total_change >= 0 else -1.0
+    rows.sort(key=lambda r: direction * float(r["change"] or 0), reverse=True)
     return rows
 
 
@@ -173,8 +208,15 @@ def price_volume_decomposition(q0: float, p0: float, q1: float, p1: float) -> di
     volume = (q1 - q0) * p0
     price = (p1 - p0) * q1
     return {
-        "previous_revenue": _f(r0), "current_revenue": _f(r1), "change": _f(r1 - r0),
-        "volume_effect": _f(volume), "price_effect": _f(price),
-        "previous_volume": _f(q0), "current_volume": _f(q1), "previous_avg_price": _f(p0), "current_avg_price": _f(p1),
-        "volume_pct_change": _f(pct_change(q0, q1)), "avg_price_pct_change": _f(pct_change(p0, p1)),
+        "previous_revenue": _f(r0),
+        "current_revenue": _f(r1),
+        "change": _f(r1 - r0),
+        "volume_effect": _f(volume),
+        "price_effect": _f(price),
+        "previous_volume": _f(q0),
+        "current_volume": _f(q1),
+        "previous_avg_price": _f(p0),
+        "current_avg_price": _f(p1),
+        "volume_pct_change": _f(pct_change(q0, q1)),
+        "avg_price_pct_change": _f(pct_change(p0, p1)),
     }

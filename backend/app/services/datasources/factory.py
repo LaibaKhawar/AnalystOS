@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import ConnectionFailed, NotFoundError
 from app.core.security import decrypt_secret
-from app.db.models import DataSource, Dataset, DatasetVersion
+from app.db.models import Dataset, DatasetVersion, DataSource
 from app.services.datasources.base import QueryEngine
 from app.services.datasources.duckdb_engine import DuckDBEngine
 from app.services.datasources.sql_engine import SQLAlchemyEngine, build_url
@@ -49,10 +49,15 @@ def engine_for(db: Session, source: DataSource) -> QueryEngine:
     if source.kind in EXTERNAL_KINDS:
         password = decrypt_secret(source.password_encrypted) if source.password_encrypted else None
         database = resolve_sqlite_path(source.database or "") if source.kind == "sqlite" else source.database
-        url = build_url(source.kind, host=source.host, port=source.port, database=database,
-                        username=source.username, password=password)
-        return SQLAlchemyEngine(source.kind, url, schema=source.db_schema,
-                                timeout_seconds=settings.sql_timeout_seconds)
+        url = build_url(
+            source.kind,
+            host=source.host,
+            port=source.port,
+            database=database,
+            username=source.username,
+            password=password,
+        )
+        return SQLAlchemyEngine(source.kind, url, schema=source.db_schema, timeout_seconds=settings.sql_timeout_seconds)
     raise ConnectionFailed(f"Unsupported data source kind: {source.kind}")
 
 

@@ -41,8 +41,17 @@ def detect_encoding(path: Path) -> str:
     best = from_bytes(sample).best()
     # Statistical detectors are unreliable on short Western samples (latin-1 is often reported as
     # cp852/cp1250). Prefer cp1252 when it decodes cleanly unless the detector found a multi-byte codec.
-    if best and best.encoding.replace("-", "_") in {"utf_16", "utf_32", "big5", "gb18030", "shift_jis", "euc_jp",
-                                                     "euc_kr", "cp949", "gbk"}:
+    if best and best.encoding.replace("-", "_") in {
+        "utf_16",
+        "utf_32",
+        "big5",
+        "gb18030",
+        "shift_jis",
+        "euc_jp",
+        "euc_kr",
+        "cp949",
+        "gbk",
+    }:
         return best.encoding
     try:
         sample.decode("cp1252")
@@ -60,9 +69,10 @@ def ensure_utf8(path: Path, encoding: str, work_dir: Path) -> Path:
     if encoding.lower() in _UTF8_ALIASES:
         return path
     target = work_dir / f"{path.stem}.utf8.csv"
-    with path.open("r", encoding=encoding, errors="replace", newline="") as src, target.open(
-        "w", encoding="utf-8", newline=""
-    ) as dst:
+    with (
+        path.open("r", encoding=encoding, errors="replace", newline="") as src,
+        target.open("w", encoding="utf-8", newline="") as dst,
+    ):
         shutil.copyfileobj(src, dst, length=1024 * 1024)
     return target
 
@@ -74,7 +84,7 @@ def load_csv(con: duckdb.DuckDBPyConnection, path: Path, table_name: str, work_d
     if source is not path:
         warnings.append(f"File was encoded as {encoding}; converted to UTF-8")
 
-    delimiter, has_header, width = sniff_structure(source)
+    delimiter, has_header, _width = sniff_structure(source)
     staging = f"__staging_{table_name}"
     try:
         con.execute(

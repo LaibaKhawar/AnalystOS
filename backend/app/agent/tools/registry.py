@@ -22,9 +22,23 @@ from app.agent.tools.schema_tools import DescribeTable, InspectSchema, ListTable
 from app.agent.tools.sql_tool import ExecuteSQL
 
 ALL_TOOLS: list[type[Tool]] = [
-    ListTables, DescribeTable, InspectSchema, ProfileDataset, AggregateMetric, ComparePeriods, AnalyzeSegments,
-    ComputeStatistics, CalculateCorrelation, DetectAnomalies, IdentifyDrivers, ExecuteSQL, ExecutePython, CreateChart,
-    RetrieveEvidence, RetrievePreviousAnalysis, GenerateReport,
+    ListTables,
+    DescribeTable,
+    InspectSchema,
+    ProfileDataset,
+    AggregateMetric,
+    ComparePeriods,
+    AnalyzeSegments,
+    ComputeStatistics,
+    CalculateCorrelation,
+    DetectAnomalies,
+    IdentifyDrivers,
+    ExecuteSQL,
+    ExecutePython,
+    CreateChart,
+    RetrieveEvidence,
+    RetrievePreviousAnalysis,
+    GenerateReport,
 ]
 
 

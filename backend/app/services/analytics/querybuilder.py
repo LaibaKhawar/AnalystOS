@@ -13,8 +13,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
 import sqlglot
+from pydantic import BaseModel, Field, field_validator
 from sqlglot import exp
 
 from app.core.errors import ValidationFailed
@@ -31,8 +31,20 @@ class Filter(BaseModel):
     @field_validator("op", mode="before")
     @classmethod
     def _normalise_op(cls, value: Any) -> Any:
-        aliases = {"==": "=", "eq": "=", "<>": "!=", "ne": "!=", "not in": "not_in", "gte": ">=", "lte": "<=",
-                   "gt": ">", "lt": "<", "like": "contains", "is null": "is_null", "is not null": "not_null"}
+        aliases = {
+            "==": "=",
+            "eq": "=",
+            "<>": "!=",
+            "ne": "!=",
+            "not in": "not_in",
+            "gte": ">=",
+            "lte": "<=",
+            "gt": ">",
+            "lt": "<",
+            "like": "contains",
+            "is null": "is_null",
+            "is not null": "not_null",
+        }
         return aliases.get(str(value).lower(), value) if isinstance(value, str) else value
 
 
@@ -112,13 +124,17 @@ def parse_period(spec: str | dict[str, Any], reference_max: dt.date | None = Non
     m = re.fullmatch(r"(\d{4})-?h([12])", lowered) or re.fullmatch(r"h([12])-?(\d{4})", lowered)
     if m:
         year, half = (int(m.group(1)), int(m.group(2))) if len(m.group(1)) == 4 else (int(m.group(2)), int(m.group(1)))
-        return Period(f"{year}-H{half}", dt.date(year, 1 if half == 1 else 7, 1),
-                      dt.date(year, 6, 30) if half == 1 else dt.date(year, 12, 31))
+        return Period(
+            f"{year}-H{half}",
+            dt.date(year, 1 if half == 1 else 7, 1),
+            dt.date(year, 6, 30) if half == 1 else dt.date(year, 12, 31),
+        )
     m = re.fullmatch(r"(\d{4})-(\d{1,2})", lowered)
     if m:
         year, month = int(m.group(1)), int(m.group(2))
-        return Period(f"{year}-{month:02d}", dt.date(year, month, 1),
-                      dt.date(year, month, calendar.monthrange(year, month)[1]))
+        return Period(
+            f"{year}-{month:02d}", dt.date(year, month, 1), dt.date(year, month, calendar.monthrange(year, month)[1])
+        )
     for fmt in ("%B%Y", "%b%Y", "%Y%B", "%Y%b"):
         try:
             parsed = dt.datetime.strptime(lowered, fmt)
@@ -153,16 +169,22 @@ class QueryBuilder:
 
             options = suggest(key, list(self.columns))
             hint = f" Did you mean: {', '.join(options)}?" if options else ""
-            raise ValidationFailed(f"Unknown column '{name}' in table '{self.table}'.{hint}",
-                                   details={"kind": "unknown_column", "column": name, "suggestions": options,
-                                            "available": sorted(self.columns.values())})
+            raise ValidationFailed(
+                f"Unknown column '{name}' in table '{self.table}'.{hint}",
+                details={
+                    "kind": "unknown_column",
+                    "column": name,
+                    "suggestions": options,
+                    "available": sorted(self.columns.values()),
+                },
+            )
         return exp.column(self.columns[key], quoted=True)
 
     def is_numeric(self, name: str) -> bool:
         t = self.types.get(name.lower(), "").upper()
         return any(k in t for k in ("INT", "DOUBLE", "FLOAT", "DECIMAL", "NUMERIC", "REAL"))
 
-    def metric_expr(self, metric: MetricSpec) -> exp.Expression:
+    def metric_expr(self, metric: MetricSpec) -> exp.Expr:
         if metric.agg == "count":
             return exp.Count(this=self.col(metric.column) if metric.column else exp.Star())
         if not metric.column:
@@ -171,8 +193,10 @@ class QueryBuilder:
         if metric.agg == "count_distinct":
             return exp.Count(this=exp.Distinct(expressions=[column]))
         if not self.is_numeric(metric.column):
-            raise ValidationFailed(f"Column '{metric.column}' is not numeric; use agg='count' or 'count_distinct'",
-                                   details={"kind": "type_error", "column": metric.column})
+            raise ValidationFailed(
+                f"Column '{metric.column}' is not numeric; use agg='count' or 'count_distinct'",
+                details={"kind": "type_error", "column": metric.column},
+            )
         if metric.agg == "median":
             if self.dialect == "duckdb":
                 return exp.Anonymous(this="median", expressions=[column])
@@ -184,7 +208,7 @@ class QueryBuilder:
         func = {"sum": exp.Sum, "avg": exp.Avg, "min": exp.Min, "max": exp.Max}[metric.agg]
         return func(this=column)
 
-    def literal(self, value: Any) -> exp.Expression:
+    def literal(self, value: Any) -> exp.Expr:
         if value is None:
             return exp.Null()
         if isinstance(value, bool):
@@ -193,7 +217,7 @@ class QueryBuilder:
             return exp.Literal.number(value)
         return exp.Literal.string(str(value))
 
-    def condition(self, flt: Filter) -> exp.Expression:
+    def condition(self, flt: Filter) -> exp.Expr:
         column = self.col(flt.column)
         op, value = flt.op, flt.value
         if op == "is_null":
@@ -202,7 +226,7 @@ class QueryBuilder:
             return exp.Not(this=exp.Is(this=column, expression=exp.Null()))
         if op in {"in", "not_in"}:
             values = value if isinstance(value, list) else [value]
-            node: exp.Expression = exp.In(this=column, expressions=[self.literal(v) for v in values])
+            node: exp.Expr = exp.In(this=column, expressions=[self.literal(v) for v in values])
             return exp.Not(this=node) if op == "not_in" else node
         if op == "between":
             if not isinstance(value, list) or len(value) != 2:
@@ -213,21 +237,23 @@ class QueryBuilder:
         cls = {"=": exp.EQ, "!=": exp.NEQ, ">": exp.GT, ">=": exp.GTE, "<": exp.LT, "<=": exp.LTE}[op]
         return cls(this=column, expression=self.literal(value))
 
-    def period_condition(self, date_column: str, period: Period) -> exp.Expression:
+    def period_condition(self, date_column: str, period: Period) -> exp.Expr:
         column = self.col(date_column)
         return exp.and_(
             exp.GTE(this=column, expression=exp.cast(exp.Literal.string(period.start.isoformat()), "DATE")),
-            exp.LT(this=column, expression=exp.cast(
-                exp.Literal.string((period.end + dt.timedelta(days=1)).isoformat()), "DATE")),
+            exp.LT(
+                this=column,
+                expression=exp.cast(exp.Literal.string((period.end + dt.timedelta(days=1)).isoformat()), "DATE"),
+            ),
         )
 
-    def where(self, filters: list[Filter], extra: list[exp.Expression] | None = None) -> exp.Expression | None:
+    def where(self, filters: list[Filter], extra: list[exp.Expr] | None = None) -> exp.Expr | None:
         conditions = [self.condition(f) for f in filters] + list(extra or [])
         if not conditions:
             return None
         return exp.and_(*conditions)
 
-    def time_bucket(self, date_column: str, grain: str) -> exp.Expression:
+    def time_bucket(self, date_column: str, grain: str) -> exp.Expr:
         grain = grain.lower()
         if grain not in {"day", "week", "month", "quarter", "year"}:
             raise ValidationFailed("grain must be one of day, week, month, quarter, year")
@@ -235,19 +261,27 @@ class QueryBuilder:
         if self.dialect == "mysql":
             fmt = {"day": "%Y-%m-%d", "week": "%x-W%v", "month": "%Y-%m-01", "quarter": None, "year": "%Y-01-01"}[grain]
             if grain == "quarter":
-                return exp.Anonymous(this="MAKEDATE", expressions=[exp.Anonymous(this="YEAR", expressions=[column]),
-                                                                   exp.Literal.number(1)])
+                return exp.Anonymous(
+                    this="MAKEDATE",
+                    expressions=[exp.Anonymous(this="YEAR", expressions=[column]), exp.Literal.number(1)],
+                )
             return exp.Anonymous(this="DATE_FORMAT", expressions=[column, exp.Literal.string(fmt)])
         if self.dialect == "sqlite":
-            fmt = {"day": "%Y-%m-%d", "week": "%Y-W%W", "month": "%Y-%m-01", "quarter": "%Y-%m-01",
-                   "year": "%Y-01-01"}[grain]
+            fmt = {"day": "%Y-%m-%d", "week": "%Y-W%W", "month": "%Y-%m-01", "quarter": "%Y-%m-01", "year": "%Y-01-01"}[
+                grain
+            ]
             return exp.Anonymous(this="strftime", expressions=[exp.Literal.string(fmt), column])
         return exp.cast(exp.DateTrunc(this=column, unit=exp.Literal.string(grain)), "DATE")
 
     def select(
-        self, projections: list[exp.Expression], *, filters: list[Filter] | None = None,
-        extra_conditions: list[exp.Expression] | None = None, group_by: list[exp.Expression] | None = None,
-        order_by: list[exp.Expression] | None = None, limit: int | None = None,
+        self,
+        projections: list[exp.Expr],
+        *,
+        filters: list[Filter] | None = None,
+        extra_conditions: list[exp.Expr] | None = None,
+        group_by: list[exp.Expr] | None = None,
+        order_by: list[exp.Expr] | None = None,
+        limit: int | None = None,
     ) -> str:
         query = exp.select(*projections).from_(exp.to_table(self.table, quoted=True))
         condition = self.where(filters or [], extra_conditions)

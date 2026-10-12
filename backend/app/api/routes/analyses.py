@@ -44,16 +44,23 @@ def reap_stale(db: Session, analysis: Analysis) -> Analysis:
     reference = analysis.started_at or analysis.created_at
     if analysis.status in {"queued", "running"} and reference and datetime.now(UTC) - reference > limit:
         analysis.status = "failed"
-        analysis.error = ("The analysis did not finish: no worker picked it up or the worker stopped. "
-                          "Check that the worker is running, then retry.")
+        analysis.error = (
+            "The analysis did not finish: no worker picked it up or the worker stopped. "
+            "Check that the worker is running, then retry."
+        )
         db.commit()
     return analysis
 
 
 @router.get("", response_model=list[AnalysisOut])
 def recent(limit: int = 20, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[Analysis]:
-    rows = (db.query(Analysis).filter(Analysis.user_id == user.id).order_by(Analysis.created_at.desc())
-            .limit(min(limit, 100)).all())
+    rows = (
+        db.query(Analysis)
+        .filter(Analysis.user_id == user.id)
+        .order_by(Analysis.created_at.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
     return [reap_stale(db, a) for a in rows]
 
 
@@ -79,28 +86,47 @@ def retry(analysis_id: str, user: User = Depends(current_user), db: Session = De
     original = owned_analysis(db, user, analysis_id)
     if original.status not in {"failed", "cancelled"}:
         raise ValidationFailed("Only failed or cancelled analyses can be retried")
-    analysis = Analysis(conversation_id=original.conversation_id, user_id=user.id,
-                        data_source_id=original.data_source_id, question=original.question, status="queued")
+    analysis = Analysis(
+        conversation_id=original.conversation_id,
+        user_id=user.id,
+        data_source_id=original.data_source_id,
+        question=original.question,
+        status="queued",
+    )
     db.add(analysis)
     db.flush()
-    db.add(Message(conversation_id=original.conversation_id, role="user", content=original.question,
-                   analysis_id=analysis.id))
+    db.add(
+        Message(
+            conversation_id=original.conversation_id, role="user", content=original.question, analysis_id=analysis.id
+        )
+    )
     db.commit()
     enqueue_analysis(analysis.id)
     return analysis
 
 
 @router.get("/{analysis_id}/events", response_model=list[EventOut])
-def events(analysis_id: str, after: int = 0, user: User = Depends(current_user),
-           db: Session = Depends(get_db)) -> list[AnalysisEvent]:
+def events(
+    analysis_id: str, after: int = 0, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[AnalysisEvent]:
     owned_analysis(db, user, analysis_id)
-    return (db.query(AnalysisEvent).filter(AnalysisEvent.analysis_id == analysis_id, AnalysisEvent.id > after)
-            .order_by(AnalysisEvent.id).limit(500).all())
+    return (
+        db.query(AnalysisEvent)
+        .filter(AnalysisEvent.analysis_id == analysis_id, AnalysisEvent.id > after)
+        .order_by(AnalysisEvent.id)
+        .limit(500)
+        .all()
+    )
 
 
 @router.get("/{analysis_id}/stream")
-async def stream(analysis_id: str, request: Request, after: int = 0, user: User = Depends(current_user),
-                 db: Session = Depends(get_db)) -> EventSourceResponse:
+async def stream(
+    analysis_id: str,
+    request: Request,
+    after: int = 0,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> EventSourceResponse:
     owned_analysis(db, user, analysis_id)
 
     async def generator() -> AsyncIterator[dict[str, str]]:
@@ -109,18 +135,32 @@ async def stream(analysis_id: str, request: Request, after: int = 0, user: User 
         while not await request.is_disconnected():
             session = get_session_factory()()
             try:
-                rows = (session.query(AnalysisEvent).filter(AnalysisEvent.analysis_id == analysis_id,
-                                                            AnalysisEvent.id > last)
-                        .order_by(AnalysisEvent.id).limit(200).all())
+                rows = (
+                    session.query(AnalysisEvent)
+                    .filter(AnalysisEvent.analysis_id == analysis_id, AnalysisEvent.id > last)
+                    .order_by(AnalysisEvent.id)
+                    .limit(200)
+                    .all()
+                )
                 status = session.query(Analysis.status).filter(Analysis.id == analysis_id).scalar()
             finally:
                 session.close()
             for row in rows:
                 last = row.id
-                yield {"id": str(row.id), "event": "progress",
-                       "data": json.dumps({"id": row.id, "type": row.type, "message": row.message,
-                                           "payload": row.payload, "created_at": row.created_at.isoformat()},
-                                          default=str)}
+                yield {
+                    "id": str(row.id),
+                    "event": "progress",
+                    "data": json.dumps(
+                        {
+                            "id": row.id,
+                            "type": row.type,
+                            "message": row.message,
+                            "payload": row.payload,
+                            "created_at": row.created_at.isoformat(),
+                        },
+                        default=str,
+                    ),
+                }
             if status in TERMINAL and not rows:
                 idle_terminal += 1
                 if idle_terminal >= 2:
@@ -132,41 +172,86 @@ async def stream(analysis_id: str, request: Request, after: int = 0, user: User 
 
 
 @router.get("/{analysis_id}/executions", response_model=list[ExecutionOut])
-def executions(analysis_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[ToolExecution]:
+def executions(
+    analysis_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[ToolExecution]:
     owned_analysis(db, user, analysis_id)
-    return (db.query(ToolExecution).filter(ToolExecution.analysis_id == analysis_id)
-            .order_by(ToolExecution.created_at).all())
+    return (
+        db.query(ToolExecution)
+        .filter(ToolExecution.analysis_id == analysis_id)
+        .order_by(ToolExecution.created_at)
+        .all()
+    )
 
 
 @router.get("/{analysis_id}/executions/{execution_id}")
-def execution_detail(analysis_id: str, execution_id: str, user: User = Depends(current_user),
-                     db: Session = Depends(get_db)) -> dict[str, object]:
+def execution_detail(
+    analysis_id: str, execution_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
     owned_analysis(db, user, analysis_id)
     execution = db.get(ToolExecution, execution_id)
     if execution is None or execution.analysis_id != analysis_id:
         raise NotFoundError("Execution not found")
-    sql = db.query(SQLExecution).filter(SQLExecution.tool_execution_id == execution_id).order_by(
-        SQLExecution.created_at).all()
+    sql = (
+        db.query(SQLExecution)
+        .filter(SQLExecution.tool_execution_id == execution_id)
+        .order_by(SQLExecution.created_at)
+        .all()
+    )
     python = db.query(PythonExecution).filter(PythonExecution.tool_execution_id == execution_id).all()
     results = db.query(ResultTable).filter(ResultTable.tool_execution_id == execution_id).all()
     return {
         "execution": ExecutionOut.model_validate(execution).model_dump(mode="json"),
-        "sql": [{"id": s.id, "dialect": s.dialect, "sql_original": s.sql_original, "sql_executed": s.sql_executed,
-                 "status": s.status, "row_count": s.row_count, "truncated": s.truncated, "error": s.error,
-                 "duration_ms": s.duration_ms, "validation": s.validation, "created_at": s.created_at.isoformat()}
-                for s in sql],
-        "python": [{"id": p.id, "code": p.code, "status": p.status, "stdout": p.stdout, "stderr": p.stderr,
-                    "static_check": p.static_check, "limits": p.limits, "duration_ms": p.duration_ms,
-                    "exit_code": p.exit_code,
-                    "artifacts": [{"file": a["file"], "title": a.get("title")} for a in p.artifacts]} for p in python],
-        "results": [{"id": r.id, "name": r.name, "columns": r.columns, "rows": r.rows[:200], "row_count": r.row_count,
-                     "truncated": r.truncated, "source": r.source} for r in results],
+        "sql": [
+            {
+                "id": s.id,
+                "dialect": s.dialect,
+                "sql_original": s.sql_original,
+                "sql_executed": s.sql_executed,
+                "status": s.status,
+                "row_count": s.row_count,
+                "truncated": s.truncated,
+                "error": s.error,
+                "duration_ms": s.duration_ms,
+                "validation": s.validation,
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in sql
+        ],
+        "python": [
+            {
+                "id": p.id,
+                "code": p.code,
+                "status": p.status,
+                "stdout": p.stdout,
+                "stderr": p.stderr,
+                "static_check": p.static_check,
+                "limits": p.limits,
+                "duration_ms": p.duration_ms,
+                "exit_code": p.exit_code,
+                "artifacts": [{"file": a["file"], "title": a.get("title")} for a in p.artifacts],
+            }
+            for p in python
+        ],
+        "results": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "columns": r.columns,
+                "rows": r.rows[:200],
+                "row_count": r.row_count,
+                "truncated": r.truncated,
+                "source": r.source,
+            }
+            for r in results
+        ],
     }
 
 
 @router.get("/{analysis_id}/artifacts/{python_id}/{file_name}")
-def artifact(analysis_id: str, python_id: str, file_name: str, user: User = Depends(current_user),
-             db: Session = Depends(get_db)) -> FileResponse:
+def artifact(
+    analysis_id: str, python_id: str, file_name: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> FileResponse:
     owned_analysis(db, user, analysis_id)
     record = db.get(PythonExecution, python_id)
     if record is None or record.analysis_id != analysis_id:
@@ -184,8 +269,9 @@ def charts(analysis_id: str, user: User = Depends(current_user), db: Session = D
 
 
 @router.get("/{analysis_id}/claims", response_model=list[ClaimOut])
-def claims(analysis_id: str, include_removed: bool = False, user: User = Depends(current_user),
-           db: Session = Depends(get_db)) -> list[Claim]:
+def claims(
+    analysis_id: str, include_removed: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[Claim]:
     owned_analysis(db, user, analysis_id)
     query = db.query(Claim).filter(Claim.analysis_id == analysis_id)
     if not include_removed:
@@ -194,17 +280,30 @@ def claims(analysis_id: str, include_removed: bool = False, user: User = Depends
 
 
 @router.get("/{analysis_id}/findings")
-def findings(analysis_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict[str, object]]:
+def findings(
+    analysis_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict[str, object]]:
     owned_analysis(db, user, analysis_id)
     rows = db.query(Finding).filter(Finding.analysis_id == analysis_id).order_by(Finding.created_at).all()
-    return [{"id": f.id, "label": f.label, "kind": f.kind, "statement": f.statement, "values": f.values,
-             "formula": f.formula, "tool_execution_id": f.tool_execution_id, "result_table_id": f.result_table_id}
-            for f in rows]
+    return [
+        {
+            "id": f.id,
+            "label": f.label,
+            "kind": f.kind,
+            "statement": f.statement,
+            "values": f.values,
+            "formula": f.formula,
+            "tool_execution_id": f.tool_execution_id,
+            "result_table_id": f.result_table_id,
+        }
+        for f in rows
+    ]
 
 
 @router.get("/{analysis_id}/claims/{claim_id}/evidence")
-def claim_evidence(analysis_id: str, claim_id: str, user: User = Depends(current_user),
-                   db: Session = Depends(get_db)) -> dict[str, object]:
+def claim_evidence(
+    analysis_id: str, claim_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
     """Everything needed to audit one claim: findings, formulas, SQL/Python, result rows, timestamps."""
     owned_analysis(db, user, analysis_id)
     claim = db.get(Claim, claim_id)
@@ -215,32 +314,79 @@ def claim_evidence(analysis_id: str, claim_id: str, user: User = Depends(current
         finding = db.get(Finding, evidence.finding_id) if evidence.finding_id else None
         execution = db.get(ToolExecution, evidence.tool_execution_id) if evidence.tool_execution_id else None
         table = db.get(ResultTable, evidence.result_table_id) if evidence.result_table_id else None
-        sql = (db.query(SQLExecution).filter(SQLExecution.tool_execution_id == evidence.tool_execution_id)
-               .order_by(SQLExecution.created_at).all() if evidence.tool_execution_id else [])
-        python = (db.query(PythonExecution).filter(PythonExecution.tool_execution_id == evidence.tool_execution_id)
-                  .all() if evidence.tool_execution_id else [])
-        items.append({
-            "id": evidence.id, "source_type": evidence.source_type, "values": evidence.values,
-            "formula": evidence.formula, "description": evidence.description,
-            "finding": {"label": finding.label, "statement": finding.statement, "kind": finding.kind} if finding else None,
-            "execution": {"id": execution.id, "tool": execution.tool, "status": execution.status,
-                          "attempt": execution.attempt, "input": execution.input, "duration_ms": execution.duration_ms,
-                          "created_at": execution.created_at.isoformat()} if execution else None,
-            "sql": [{"id": s.id, "sql": s.sql_executed or s.sql_original, "status": s.status, "row_count": s.row_count,
-                     "duration_ms": s.duration_ms, "created_at": s.created_at.isoformat()} for s in sql],
-            "python": [{"id": p.id, "code": p.code, "status": p.status, "duration_ms": p.duration_ms} for p in python],
-            "result": {"id": table.id, "name": table.name, "columns": table.columns, "rows": table.rows[:100],
-                       "row_count": table.row_count, "truncated": table.truncated} if table else None,
-        })
+        sql = (
+            db.query(SQLExecution)
+            .filter(SQLExecution.tool_execution_id == evidence.tool_execution_id)
+            .order_by(SQLExecution.created_at)
+            .all()
+            if evidence.tool_execution_id
+            else []
+        )
+        python = (
+            db.query(PythonExecution).filter(PythonExecution.tool_execution_id == evidence.tool_execution_id).all()
+            if evidence.tool_execution_id
+            else []
+        )
+        items.append(
+            {
+                "id": evidence.id,
+                "source_type": evidence.source_type,
+                "values": evidence.values,
+                "formula": evidence.formula,
+                "description": evidence.description,
+                "finding": {"label": finding.label, "statement": finding.statement, "kind": finding.kind}
+                if finding
+                else None,
+                "execution": {
+                    "id": execution.id,
+                    "tool": execution.tool,
+                    "status": execution.status,
+                    "attempt": execution.attempt,
+                    "input": execution.input,
+                    "duration_ms": execution.duration_ms,
+                    "created_at": execution.created_at.isoformat(),
+                }
+                if execution
+                else None,
+                "sql": [
+                    {
+                        "id": s.id,
+                        "sql": s.sql_executed or s.sql_original,
+                        "status": s.status,
+                        "row_count": s.row_count,
+                        "duration_ms": s.duration_ms,
+                        "created_at": s.created_at.isoformat(),
+                    }
+                    for s in sql
+                ],
+                "python": [
+                    {"id": p.id, "code": p.code, "status": p.status, "duration_ms": p.duration_ms} for p in python
+                ],
+                "result": {
+                    "id": table.id,
+                    "name": table.name,
+                    "columns": table.columns,
+                    "rows": table.rows[:100],
+                    "row_count": table.row_count,
+                    "truncated": table.truncated,
+                }
+                if table
+                else None,
+            }
+        )
     return {"claim": ClaimOut.model_validate(claim).model_dump(mode="json"), "evidence": items}
 
 
 @router.get("/{analysis_id}/results/{result_id}.csv", response_class=PlainTextResponse)
-def result_download(analysis_id: str, result_id: str, user: User = Depends(current_user),
-                    db: Session = Depends(get_db)) -> PlainTextResponse:
+def result_download(
+    analysis_id: str, result_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> PlainTextResponse:
     owned_analysis(db, user, analysis_id)
     table = db.get(ResultTable, result_id)
     if table is None or table.analysis_id != analysis_id:
         raise NotFoundError("Result not found")
-    return PlainTextResponse(result_csv(table), media_type="text/csv",
-                             headers={"Content-Disposition": f'attachment; filename="{result_id}.csv"'})
+    return PlainTextResponse(
+        result_csv(table),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{result_id}.csv"'},
+    )

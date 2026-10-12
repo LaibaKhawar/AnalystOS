@@ -21,15 +21,38 @@ from typing import Any
 from app.db.models import Finding
 
 _NUMBER = re.compile(
-    r"(?P<cur>[$€£¥])?\s?(?P<sign>[-+−])?(?P<cur2>[$€£¥])?(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
+    r"(?P<cur>[$€£¥])?\s?(?P<sign>[-+\u2212])?(?P<cur2>[$€£¥])?(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
     r"(?:\s?(?P<suffix>k|K|m|M|bn|B|thousand|million|billion)\b)?\s?(?P<pct>%|percent\b|pp\b|percentage points?)?"
 )
-_DATE_LIKE = re.compile(r"\b\d{4}-\d{2}(?:-\d{2})?\b|\b(?:Q[1-4]|H[12])\s?\d{4}\b|\b\d{4}\s?-?\s?(?:Q[1-4]|H[12])\b|"
-                        r"\bQ[1-4]\b|\bH[12]\b|\bF\d+\b")
-_CAUSAL = re.compile(r"\b(caused|causes|causing|because of|due to|led to|leads to|resulted in|results in|drove|"
-                     r"driven by|was driven|is driven|attributable to|thanks to)\b", re.IGNORECASE)
-_MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
-                                       "september", "october", "november", "december"], start=1)}
+_DATE_LIKE = re.compile(
+    r"\b\d{4}-\d{2}(?:-\d{2})?\b|\b(?:Q[1-4]|H[12])\s?\d{4}\b|\b\d{4}\s?-?\s?(?:Q[1-4]|H[12])\b|"
+    r"\bQ[1-4]\b|\bH[12]\b|\bF\d+\b"
+)
+_CAUSAL = re.compile(
+    r"\b(caused|causes|causing|because of|due to|led to|leads to|resulted in|results in|drove|"
+    r"driven by|was driven|is driven|attributable to|thanks to)\b",
+    re.IGNORECASE,
+)
+_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        [
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        ],
+        start=1,
+    )
+}
 _MONTH_ABBR = {m[:3]: i for m, i in _MONTHS.items()}
 _SCALES = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6, "bn": 1e9, "b": 1e9, "billion": 1e9}
 
@@ -72,11 +95,11 @@ class ClaimCheck:
 def extract_numbers(text: str, exempt_phrases: list[str] | None = None) -> list[NumberToken]:
     masked = text
     for match in _DATE_LIKE.finditer(text):
-        masked = masked[: match.start()] + " " * (match.end() - match.start()) + masked[match.end():]
+        masked = masked[: match.start()] + " " * (match.end() - match.start()) + masked[match.end() :]
     for phrase in exempt_phrases or []:
         if phrase and any(ch.isdigit() for ch in phrase):
             for found in re.finditer(re.escape(phrase), masked, re.IGNORECASE):
-                masked = masked[: found.start()] + " " * (found.end() - found.start()) + masked[found.end():]
+                masked = masked[: found.start()] + " " * (found.end() - found.start()) + masked[found.end() :]
     tokens: list[NumberToken] = []
     for m in _NUMBER.finditer(masked):
         num = m.group("num")
@@ -88,14 +111,23 @@ def extract_numbers(text: str, exempt_phrases: list[str] | None = None) -> list[
         has_currency = bool(m.group("cur") or m.group("cur2"))
         value = float(num.replace(",", ""))
         decimals = len(num.split(".")[1]) if "." in num else 0
-        if m.group("sign") in {"-", "−"}:
+        if m.group("sign") in {"-", "\u2212"}:
             value = -value
         plain_int = not is_pct and not suffix and not has_currency and decimals == 0 and "," not in num
         if plain_int and (1900 <= abs(value) <= 2100 or abs(value) <= 12):
             continue  # years, small counts/ordinals ("top 3", "4 regions")
         scale = _SCALES.get(suffix, 1.0)
-        tokens.append(NumberToken(raw=m.group(0).strip(), value=value * scale, is_pct=is_pct, decimals=decimals,
-                                  scale=scale, start=m.start(), end=m.end()))
+        tokens.append(
+            NumberToken(
+                raw=m.group(0).strip(),
+                value=value * scale,
+                is_pct=is_pct,
+                decimals=decimals,
+                scale=scale,
+                start=m.start(),
+                end=m.end(),
+            )
+        )
     return tokens
 
 
@@ -104,14 +136,16 @@ def _numeric_values(finding: Finding) -> dict[str, float]:
     for key, value in (finding.values or {}).items():
         if isinstance(value, bool) or value is None:
             continue
-        if isinstance(value, int | float) and not (isinstance(value, float) and (math.isnan(value) or math.isinf(value))):
+        if isinstance(value, int | float) and not (
+            isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+        ):
             out[key] = float(value)
     return out
 
 
 def _close(token: NumberToken, value: float) -> bool:
     target = token.value
-    half_unit = 0.5 * (10 ** -token.decimals) * token.scale
+    half_unit = 0.5 * (10**-token.decimals) * token.scale
     for candidate in (value, abs(value)):
         for t in (target, abs(target)):
             if abs(t - candidate) <= half_unit * 1.001 + 1e-9:
@@ -154,11 +188,14 @@ def _periods_ok(sentence: str, finding: Finding) -> bool:
 def _derived(token: NumberToken, findings: list[Finding]) -> Match | None:
     if not token.is_pct:
         return None
-    values: list[tuple[Finding, str, float]] = [(f, k, v) for f in findings for k, v in _numeric_values(f).items()
-                                                if not any(s in k for s in ("pct", "share", "contribution", "p_value",
-                                                                             "coefficient", "rank", "score"))]
+    values: list[tuple[Finding, str, float]] = [
+        (f, k, v)
+        for f in findings
+        for k, v in _numeric_values(f).items()
+        if not any(s in k for s in ("pct", "share", "contribution", "p_value", "coefficient", "rank", "score"))
+    ]
     for i, (fa, ka, a) in enumerate(values):
-        for fb, kb, b in values[i + 1:] + values[:i]:
+        for fb, kb, b in values[i + 1 :] + values[:i]:
             if a == 0 or (fa is fb and ka == kb):
                 continue
             change = (b - a) / abs(a) * 100
@@ -166,13 +203,20 @@ def _derived(token: NumberToken, findings: list[Finding]) -> Match | None:
             for computed, formula in ((change, f"({b:g} - {a:g}) / {abs(a):g} * 100"), (share, f"{b:g} / {a:g} * 100")):
                 probe = NumberToken(token.raw, token.value, True, token.decimals, 1.0, 0, 0)
                 if _close(probe, computed):
-                    return Match(token.raw, fa.label if fa is fb else f"{fa.label}+{fb.label}", fa.id, None,
-                                 round(computed, 4), derived_formula=formula)
+                    return Match(
+                        token.raw,
+                        fa.label if fa is fb else f"{fa.label}+{fb.label}",
+                        fa.id,
+                        None,
+                        round(computed, 4),
+                        derived_formula=formula,
+                    )
     return None
 
 
-def verify_sentence(text: str, citations: list[str], findings: dict[str, Finding], *, section: str, kind: str,
-                    exempt_phrases: list[str]) -> ClaimCheck:
+def verify_sentence(
+    text: str, citations: list[str], findings: dict[str, Finding], *, section: str, kind: str, exempt_phrases: list[str]
+) -> ClaimCheck:
     valid_citations = [c.upper().strip() for c in citations if c and c.upper().strip() in findings]
     check = ClaimCheck(text=text.strip(), status="no_numbers", section=section, kind=kind, citations=valid_citations)
     tokens = extract_numbers(text, exempt_phrases)
@@ -246,7 +290,8 @@ class VerificationReport:
             "draft_unsupported_rate": round(draft_removed / draft_numeric, 4) if draft_numeric else 0.0,
             # Share of numeric sentences shown to the user without matching evidence (by construction 0).
             "final_unsupported_rate": round(sum(1 for c in kept_numeric if not c.matches) / len(kept_numeric), 4)
-            if kept_numeric else 0.0,
+            if kept_numeric
+            else 0.0,
         }
 
 
@@ -259,10 +304,15 @@ def verify_answer(draft: dict[str, Any], findings: list[Finding], *, exempt_phra
             if isinstance(item, str):
                 text, cites, sec = item, [], section
             else:
-                text, cites, sec = str(item.get("text", "")), list(item.get("citations") or []), item.get("section") or section
+                text, cites, sec = (
+                    str(item.get("text", "")),
+                    list(item.get("citations") or []),
+                    item.get("section") or section,
+                )
             for sentence in _split_sentences(text):
-                claims.append(verify_sentence(sentence, cites, by_label, section=sec, kind=kind,
-                                              exempt_phrases=exempt_phrases))
+                claims.append(
+                    verify_sentence(sentence, cites, by_label, section=sec, kind=kind, exempt_phrases=exempt_phrases)
+                )
 
     handle(draft.get("summary", []), "summary", "fact")
     handle(draft.get("facts", []), "finding", "fact")
@@ -270,15 +320,21 @@ def verify_answer(draft: dict[str, Any], findings: list[Finding], *, exempt_phra
     handle(draft.get("recommendations", []), "recommendation", "recommendation")
 
     headline = str(draft.get("headline") or "").strip()
-    head_check = verify_sentence(headline, [], by_label, section="headline", kind="fact",
-                                 exempt_phrases=exempt_phrases) if headline else None
+    head_check = (
+        verify_sentence(headline, [], by_label, section="headline", kind="fact", exempt_phrases=exempt_phrases)
+        if headline
+        else None
+    )
     if head_check is None or head_check.status == "removed":
-        fallback = next((c.text for c in claims if c.section == "summary" and c.status in {"verified", "no_numbers"}),
-                        None)
+        fallback = next(
+            (c.text for c in claims if c.section == "summary" and c.status in {"verified", "no_numbers"}), None
+        )
         headline = fallback or "Analysis complete"
     caveats = []
     for caveat in draft.get("caveats", []) or []:
-        check = verify_sentence(str(caveat), [], by_label, section="caveat", kind="caveat", exempt_phrases=exempt_phrases)
+        check = verify_sentence(
+            str(caveat), [], by_label, section="caveat", kind="caveat", exempt_phrases=exempt_phrases
+        )
         if check.status != "removed":
             caveats.append(check.text)
     follow_ups = [str(q) for q in (draft.get("follow_up_questions") or []) if isinstance(q, str)][:5]

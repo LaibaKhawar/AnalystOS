@@ -29,15 +29,18 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.security import hash_password
 from app.db.base import utcnow
-from app.db.models import Analysis, Conversation, DataSource, Dataset, EvaluationCase, EvaluationRun, Message, User
+from app.db.models import Analysis, Conversation, Dataset, DataSource, EvaluationCase, EvaluationRun, Message, User
 from app.db.session import get_session_factory
 from app.services.ingestion.service import ingest_upload
 from evals.scoring import aggregate, process_metrics, score_case
 
 ROOT = Path(__file__).resolve().parent
 DATASETS = {
-    "sales": "sales.csv", "saas": "saas_subscriptions.csv", "marketing": "marketing_performance.csv",
-    "adversarial": "adversarial_accounts.csv", "sales_xlsx": "sales_2026.xlsx",
+    "sales": "sales.csv",
+    "saas": "saas_subscriptions.csv",
+    "marketing": "marketing_performance.csv",
+    "adversarial": "adversarial_accounts.csv",
+    "sales_xlsx": "sales_2026.xlsx",
 }
 EVAL_EMAIL = "eval@analystos.local"
 
@@ -97,12 +100,19 @@ def run(args: argparse.Namespace) -> str:
         db.add(user)
         db.commit()
     sources = ensure_sources(db, user)
-    evaluation = EvaluationRun(suite=spec.get("suite", "core"), model=llm.model, status="running",
-                               config={"cases": [c["id"] for c in cases], "llm_base_url": _host(settings.llm_base_url),
-                                       "agent_max_steps": settings.agent_max_steps,
-                                       "max_retries": settings.agent_max_retries_per_step,
-                                       "temperature": settings.llm_temperature},
-                               notes=args.notes)
+    evaluation = EvaluationRun(
+        suite=spec.get("suite", "core"),
+        model=llm.model,
+        status="running",
+        config={
+            "cases": [c["id"] for c in cases],
+            "llm_base_url": _host(settings.llm_base_url),
+            "agent_max_steps": settings.agent_max_steps,
+            "max_retries": settings.agent_max_retries_per_step,
+            "temperature": settings.llm_temperature,
+        },
+        notes=args.notes,
+    )
     db.add(evaluation)
     db.commit()
     print(f"evaluation run {evaluation.id}: {len(cases)} cases with {llm.model}", flush=True)
@@ -122,8 +132,9 @@ def run(args: argparse.Namespace) -> str:
             conversation_id = conversation.id
             if group:
                 conversations[group] = conversation_id
-        analysis = Analysis(conversation_id=conversation_id, user_id=user.id, data_source_id=source_id,
-                            question=case["question"])
+        analysis = Analysis(
+            conversation_id=conversation_id, user_id=user.id, data_source_id=source_id, question=case["question"]
+        )
         db.add(analysis)
         db.flush()
         db.add(Message(conversation_id=conversation_id, role="user", content=case["question"], analysis_id=analysis.id))
@@ -139,34 +150,66 @@ def run(args: argparse.Namespace) -> str:
         latency = int((time.perf_counter() - started) * 1000)
         scored = score_case(db, case, analysis, expected)
         record = {
-            "case_id": case["id"], "category": case["category"], "dataset": case["dataset"],
-            "question": case["question"], "expected": expected, "passed": scored.passed, "scores": scored.scores,
-            "answer": scored.answer, "latency_ms": analysis.latency_ms or latency, "cost_usd": analysis.cost_usd,
-            "input_tokens": analysis.input_tokens, "output_tokens": analysis.output_tokens,
-            "llm_calls": analysis.llm_calls, "error": error or analysis.error, "analysis_id": analysis.id,
+            "case_id": case["id"],
+            "category": case["category"],
+            "dataset": case["dataset"],
+            "question": case["question"],
+            "expected": expected,
+            "passed": scored.passed,
+            "scores": scored.scores,
+            "answer": scored.answer,
+            "latency_ms": analysis.latency_ms or latency,
+            "cost_usd": analysis.cost_usd,
+            "input_tokens": analysis.input_tokens,
+            "output_tokens": analysis.output_tokens,
+            "llm_calls": analysis.llm_calls,
+            "error": error or analysis.error,
+            "analysis_id": analysis.id,
             "process": process_metrics(db, analysis),
         }
         results.append(record)
-        db.add(EvaluationCase(
-            run_id=evaluation.id, case_id=case["id"], category=case["category"], dataset=case["dataset"],
-            question=case["question"], expected=expected, answer=scored.answer, passed=scored.passed,
-            scores={**scored.scores, "process": record["process"]}, latency_ms=record["latency_ms"],
-            input_tokens=analysis.input_tokens, output_tokens=analysis.output_tokens, cost_usd=analysis.cost_usd,
-            error=record["error"], analysis_id=analysis.id))
+        db.add(
+            EvaluationCase(
+                run_id=evaluation.id,
+                case_id=case["id"],
+                category=case["category"],
+                dataset=case["dataset"],
+                question=case["question"],
+                expected=expected,
+                answer=scored.answer,
+                passed=scored.passed,
+                scores={**scored.scores, "process": record["process"]},
+                latency_ms=record["latency_ms"],
+                input_tokens=analysis.input_tokens,
+                output_tokens=analysis.output_tokens,
+                cost_usd=analysis.cost_usd,
+                error=record["error"],
+                analysis_id=analysis.id,
+            )
+        )
         evaluation.metrics = aggregate(results)
         db.commit()
         mark = "PASS" if scored.passed else "FAIL"
-        print(f"[{index}/{len(cases)}] {mark} {case['id']:32s} {record['latency_ms'] / 1000:6.1f}s "
-              f"{json.dumps({k: v for k, v in scored.scores.items() if k != 'safety_details'}, default=str)[:160]}",
-              flush=True)
+        print(
+            f"[{index}/{len(cases)}] {mark} {case['id']:32s} {record['latency_ms'] / 1000:6.1f}s "
+            f"{json.dumps({k: v for k, v in scored.scores.items() if k != 'safety_details'}, default=str)[:160]}",
+            flush=True,
+        )
 
     evaluation.metrics = aggregate(results)
     evaluation.status, evaluation.completed_at = "completed", utcnow()
     db.commit()
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
-    payload = {"run_id": evaluation.id, "model": llm.model, "suite": evaluation.suite, "notes": args.notes,
-               "created_at": evaluation.created_at.isoformat(), "metrics": evaluation.metrics, "cases": results}
+    payload = {
+        "run_id": evaluation.id,
+        "model": llm.model,
+        "suite": evaluation.suite,
+        "notes": args.notes,
+        "created_at": evaluation.created_at.isoformat(),
+        "metrics": evaluation.metrics,
+        "cases": results,
+    }
     (out_dir / f"{evaluation.id}.json").write_text(json.dumps(payload, indent=2, default=str))
     (out_dir / f"{evaluation.id}.md").write_text(markdown(payload))
     print(json.dumps(evaluation.metrics, indent=2, default=str))
@@ -185,10 +228,15 @@ def markdown(payload: dict[str, Any]) -> str:
         return "n/a" if value is None else f"{value * 100:.1f}%"
 
     lines = [
-        f"# Evaluation run {payload['run_id']}", "",
-        f"- Model: `{payload['model']}`", f"- Suite: {payload['suite']} ({m['cases']} cases)",
-        f"- Date: {payload['created_at']}", f"- Notes: {payload.get('notes') or '-'}", "",
-        "| Metric | Value |", "|---|---|",
+        f"# Evaluation run {payload['run_id']}",
+        "",
+        f"- Model: `{payload['model']}`",
+        f"- Suite: {payload['suite']} ({m['cases']} cases)",
+        f"- Date: {payload['created_at']}",
+        f"- Notes: {payload.get('notes') or '-'}",
+        "",
+        "| Metric | Value |",
+        "|---|---|",
         f"| Overall pass rate | {pct(m['pass_rate'])} |",
         f"| Numerical accuracy (answer states the right number) | {pct(m['numerical_accuracy'])} |",
         f"| Entity accuracy | {pct(m['entity_accuracy'])} |",
@@ -204,20 +252,30 @@ def markdown(payload: dict[str, Any]) -> str:
         f"| Safety pass rate | {pct(m['safety_pass_rate'])} |",
         f"| Latency p50 / p95 | {m['latency_p50_ms'] / 1000 if m['latency_p50_ms'] else 0:.1f}s / "
         f"{m['latency_p95_ms'] / 1000 if m['latency_p95_ms'] else 0:.1f}s |",
-        f"| Avg LLM calls / tokens in / out | {m['avg_llm_calls']} / {m['avg_input_tokens']} / {m['avg_output_tokens']} |",
-        f"| Avg cost per task | ${m['avg_cost_usd']:.4f} |", "",
-        "## By category", "", "| Category | Passed | Cases | Rate |", "|---|---|---|---|",
+        f"| Avg LLM calls / tokens in / out | {m['avg_llm_calls']} / {m['avg_input_tokens']} / "
+        f"{m['avg_output_tokens']} |",
+        f"| Avg cost per task | ${m['avg_cost_usd']:.4f} |",
+        "",
+        "## By category",
+        "",
+        "| Category | Passed | Cases | Rate |",
+        "|---|---|---|---|",
     ]
     for name, bucket in sorted(m["by_category"].items()):
         lines.append(f"| {name} | {bucket['passed']} | {bucket['cases']} | {pct(bucket['pass_rate'])} |")
     lines += ["", "## Cases", "", "| Case | Category | Pass | Latency | Notes |", "|---|---|---|---|---|"]
     for case in payload["cases"]:
-        notes = ", ".join(f"{k}={v}" for k, v in case["scores"].items()
-                          if k not in {"status", "safety_details"} and not isinstance(v, dict))
+        notes = ", ".join(
+            f"{k}={v}"
+            for k, v in case["scores"].items()
+            if k not in {"status", "safety_details"} and not isinstance(v, dict)
+        )
         if case.get("error"):
             notes += f"; error: {str(case['error'])[:80]}"
-        lines.append(f"| {case['case_id']} | {case['category']} | {'yes' if case['passed'] else 'no'} | "
-                     f"{case['latency_ms'] / 1000:.1f}s | {notes} |")
+        lines.append(
+            f"| {case['case_id']} | {case['category']} | {'yes' if case['passed'] else 'no'} | "
+            f"{case['latency_ms'] / 1000:.1f}s | {notes} |"
+        )
     return "\n".join(lines) + "\n"
 
 

@@ -21,8 +21,9 @@ def client(db) -> Iterator[TestClient]:  # type: ignore[no-untyped-def]  # db fi
 
 @pytest.fixture
 def auth(client: TestClient) -> dict[str, str]:
-    response = client.post("/api/auth/register", json={"email": "analyst@example.com", "name": "Analyst",
-                                                        "password": "a-strong-password"})
+    response = client.post(
+        "/api/auth/register", json={"email": "analyst@example.com", "name": "Analyst", "password": "a-strong-password"}
+    )
     assert response.status_code == 201, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

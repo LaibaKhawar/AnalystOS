@@ -65,7 +65,7 @@ build-backend = "setuptools.build_meta"
 include = ["app*", "evals*"]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py311"
 extend-exclude = ["alembic/versions"]
 
@@ -74,7 +74,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "C4", "PT"]
 ignore = ["S101", "S608", "B008", "RUF012", "S311", "S603", "S607"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106", "S108", "PT011"]
+"tests/**" = ["S105", "S106", "S108", "PT011", "PT018", "E501"]
 "evals/**" = ["S105"]
 
 [tool.mypy]
@@ -96,3 +96,7 @@ markers = [
   "mysql: requires a MySQL test database",
 ]
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "evals"]
+skips = ["B101", "B608"]

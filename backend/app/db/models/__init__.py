@@ -8,7 +8,7 @@ from app.db.models.analysis import (
     SQLExecution,
     ToolExecution,
 )
-from app.db.models.data import ColumnMetadata, DataSource, Dataset, DatasetVersion, TableMetadata
+from app.db.models.data import ColumnMetadata, Dataset, DatasetVersion, DataSource, TableMetadata
 from app.db.models.evaluation import EvaluationCase, EvaluationRun
 from app.db.models.evidence import Chart, Claim, Evidence, Finding, Report, ResultTable
 from app.db.models.memory import AnalysisMemory

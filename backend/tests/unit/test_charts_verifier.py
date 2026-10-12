@@ -13,8 +13,11 @@ ROWS = [["North", 120.0], ["South", 80.0], ["East", 100.0]]
 def test_bar_chart_from_result_starts_at_zero() -> None:
     spec, data = build_chart("bar", COLUMNS, ROWS, x="region", y=["revenue"], title="Revenue")
     assert spec["y_zero"] is True
-    assert data == [{"region": "North", "revenue": 120.0}, {"region": "South", "revenue": 80.0},
-                    {"region": "East", "revenue": 100.0}]
+    assert data == [
+        {"region": "North", "revenue": 120.0},
+        {"region": "South", "revenue": 80.0},
+        {"region": "East", "revenue": 100.0},
+    ]
     assert data_hash(data) == data_hash(list(data))
 
 
@@ -42,12 +45,22 @@ def test_recommend_type() -> None:
 
 
 def _finding(label: str, values: dict, entities=(), periods=()) -> Finding:  # type: ignore[no-untyped-def]
-    return Finding(id=f"id_{label}", label=label, kind="comparison", statement="", values=values,
-                   payload={"entities": list(entities), "periods": list(periods)})
+    return Finding(
+        id=f"id_{label}",
+        label=label,
+        kind="comparison",
+        statement="",
+        values=values,
+        payload={"entities": list(entities), "periods": list(periods)},
+    )
 
 
-F1 = _finding("F1", {"previous": 820000, "current": 678140, "change": -141860, "pct_change": -17.3},
-              ["Lahore"], ["2026-Q2", "2026-Q3"])
+F1 = _finding(
+    "F1",
+    {"previous": 820000, "current": 678140, "change": -141860, "pct_change": -17.3},
+    ["Lahore"],
+    ["2026-Q2", "2026-Q3"],
+)
 F2 = _finding("F2", {"value": 1234567.89, "share_pct": 41.2}, ["North"])
 
 
@@ -57,16 +70,19 @@ def _verify(text: str, citations: list[str], kind: str = "facts"):  # type: igno
     return verify_answer(draft, [F1, F2], exempt_phrases=[]).claims[0]
 
 
-@pytest.mark.parametrize(("text", "status"), [
-    ("Lahore revenue declined by 17.3% between Q2 and Q3.", "verified"),
-    ("Lahore revenue fell from 820K to 678.1K.", "verified"),
-    ("North generated $1.23M, 41.2% of revenue.", "verified"),
-    ("Lahore's Q3 revenue was 82.7% of its Q2 revenue.", "verified"),  # derived share
-    ("North generated $1.5M in revenue.", "removed"),  # wrong value
-    ("Lahore declined 17.3% in Q1.", "removed"),  # wrong period
-    ("Karachi declined by 17.3%.", "removed"),  # wrong entity
-    ("Review the top 3 stores in Lahore.", "no_numbers"),
-])
+@pytest.mark.parametrize(
+    ("text", "status"),
+    [
+        ("Lahore revenue declined by 17.3% between Q2 and Q3.", "verified"),
+        ("Lahore revenue fell from 820K to 678.1K.", "verified"),
+        ("North generated $1.23M, 41.2% of revenue.", "verified"),
+        ("Lahore's Q3 revenue was 82.7% of its Q2 revenue.", "verified"),  # derived share
+        ("North generated $1.5M in revenue.", "removed"),  # wrong value
+        ("Lahore declined 17.3% in Q1.", "removed"),  # wrong period
+        ("Karachi declined by 17.3%.", "removed"),  # wrong entity
+        ("Review the top 3 stores in Lahore.", "no_numbers"),
+    ],
+)
 def test_claim_verification(text: str, status: str) -> None:
     assert _verify(text, ["F1", "F2"]).status == status
 
@@ -78,8 +94,14 @@ def test_causal_language_is_qualified() -> None:
 
 
 def test_unsupported_claims_never_reach_final_output() -> None:
-    draft = {"headline": "Revenue jumped 99.9%", "summary": [{"text": "North made 777 units.", "citations": []}],
-             "facts": [], "interpretations": [], "recommendations": [], "caveats": ["Margin was 12.34%."]}
+    draft = {
+        "headline": "Revenue jumped 99.9%",
+        "summary": [{"text": "North made 777 units.", "citations": []}],
+        "facts": [],
+        "interpretations": [],
+        "recommendations": [],
+        "caveats": ["Margin was 12.34%."],
+    }
     report = verify_answer(draft, [F1, F2], exempt_phrases=[])
     assert report.headline == "Analysis complete"
     assert all(c.status == "removed" for c in report.claims)
@@ -88,6 +110,8 @@ def test_unsupported_claims_never_reach_final_output() -> None:
 
 
 def test_number_extraction_skips_years_dates_and_labels() -> None:
-    tokens = [t.raw for t in extract_numbers("In 2026-Q3 (2026-07-01 to 2026-09-30) F12 shows 3 stores at -3.4M and 12.7%")]
+    tokens = [
+        t.raw for t in extract_numbers("In 2026-Q3 (2026-07-01 to 2026-09-30) F12 shows 3 stores at -3.4M and 12.7%")
+    ]
     assert tokens == ["-3.4M", "12.7%"]
     assert extract_numbers("Store 104 sold 5,200 units", exempt_phrases=["Store 104"])[0].value == 5200

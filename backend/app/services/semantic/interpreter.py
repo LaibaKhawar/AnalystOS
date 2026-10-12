@@ -29,41 +29,125 @@ RULES: tuple[Rule, ...] = (
     Rule("currency_metric", "revenue", ("revenue", "sales", "turnover", "gmv", "income", "bookings"), ("metric",)),
     Rule("currency_metric", "recurring_revenue", ("mrr", "arr", "recurring"), ("metric",)),
     Rule("currency_metric", "profit", ("profit", "earnings", "ebitda", "net_income", "gross_profit"), ("metric",)),
-    Rule("currency_metric", "cost", ("cost", "cogs", "expense", "expenses", "spend", "budget", "fee", "fees"),
-         ("metric",)),
+    Rule(
+        "currency_metric",
+        "cost",
+        ("cost", "cogs", "expense", "expenses", "spend", "budget", "fee", "fees"),
+        ("metric",),
+    ),
     Rule("currency_metric", "price", ("price", "unit_price", "aov", "arpu", "asp"), ("metric",)),
-    Rule("currency_metric", "amount", ("amount", "value", "payment", "total", "ltv", "usd", "eur", "gbp"),
-         ("metric",)),
+    Rule("currency_metric", "amount", ("amount", "value", "payment", "total", "ltv", "usd", "eur", "gbp"), ("metric",)),
     Rule("quantity_metric", "quantity", ("units", "qty", "quantity", "volume", "items"), ("metric",)),
-    Rule("quantity_metric", "count", ("count", "orders", "transactions", "visits", "sessions", "clicks",
-                                      "impressions", "signups", "leads", "conversions", "tickets",
-                                      "support_tickets", "seats", "users", "installs"), ("metric",)),
+    Rule(
+        "quantity_metric",
+        "count",
+        (
+            "count",
+            "orders",
+            "transactions",
+            "visits",
+            "sessions",
+            "clicks",
+            "impressions",
+            "signups",
+            "leads",
+            "conversions",
+            "tickets",
+            "support_tickets",
+            "seats",
+            "users",
+            "installs",
+        ),
+        ("metric",),
+    ),
     Rule("quantity_metric", "usage", ("usage", "events", "logins", "api_calls", "minutes_used"), ("metric",)),
-    Rule("percentage_metric", "rate", ("pct", "percent", "percentage", "rate", "ratio", "share", "ctr",
-                                       "conversion_rate", "churn_rate", "margin", "growth"), ("metric",)),
+    Rule(
+        "percentage_metric",
+        "rate",
+        (
+            "pct",
+            "percent",
+            "percentage",
+            "rate",
+            "ratio",
+            "share",
+            "ctr",
+            "conversion_rate",
+            "churn_rate",
+            "margin",
+            "growth",
+        ),
+        ("metric",),
+    ),
     Rule("score_metric", "score", ("score", "rating", "nps", "csat", "satisfaction"), ("metric",)),
-    Rule("duration_metric", "duration", ("duration", "days", "hours", "minutes", "tenure", "lead_time",
-                                         "age_days"), ("metric",)),
-    Rule("geographical_category", "location", ("region", "country", "city", "state", "province", "territory",
-                                               "location", "geo", "market", "zip", "postcode", "area"),
-         ("dimension", "text")),
-    Rule("store_category", "store", ("store", "branch", "outlet", "shop", "warehouse", "site"),
-         ("dimension", "text", "identifier")),
-    Rule("product_category", "product", ("product", "sku", "item", "model", "brand"),
-         ("dimension", "text", "identifier")),
+    Rule(
+        "duration_metric",
+        "duration",
+        ("duration", "days", "hours", "minutes", "tenure", "lead_time", "age_days"),
+        ("metric",),
+    ),
+    Rule(
+        "geographical_category",
+        "location",
+        (
+            "region",
+            "country",
+            "city",
+            "state",
+            "province",
+            "territory",
+            "location",
+            "geo",
+            "market",
+            "zip",
+            "postcode",
+            "area",
+        ),
+        ("dimension", "text"),
+    ),
+    Rule(
+        "store_category",
+        "store",
+        ("store", "branch", "outlet", "shop", "warehouse", "site"),
+        ("dimension", "text", "identifier"),
+    ),
+    Rule(
+        "product_category", "product", ("product", "sku", "item", "model", "brand"), ("dimension", "text", "identifier")
+    ),
     Rule("plan_category", "plan", ("plan", "tier", "package", "subscription", "edition"), ("dimension",)),
-    Rule("customer_dimension", "customer", ("customer", "client", "account", "company", "buyer", "tenant"),
-         ("dimension", "text", "identifier")),
-    Rule("segment_category", "segment", ("segment", "cohort", "persona", "customer_segment", "industry",
-                                         "vertical", "size"), ("dimension",)),
-    Rule("channel_category", "channel", ("channel", "source", "medium", "campaign", "utm", "platform",
-                                         "referrer"), ("dimension",)),
-    Rule("category", "category", ("category", "type", "class", "group", "department", "line", "family"),
-         ("dimension",)),
-    Rule("status_category", "status", ("status", "stage", "outcome", "result", "churned", "active",
-                                       "is_active", "flag"), ("dimension",)),
-    Rule("employee_dimension", "employee", ("rep", "agent", "employee", "owner", "manager", "salesperson"),
-         ("dimension", "text")),
+    Rule(
+        "customer_dimension",
+        "customer",
+        ("customer", "client", "account", "company", "buyer", "tenant"),
+        ("dimension", "text", "identifier"),
+    ),
+    Rule(
+        "segment_category",
+        "segment",
+        ("segment", "cohort", "persona", "customer_segment", "industry", "vertical", "size"),
+        ("dimension",),
+    ),
+    Rule(
+        "channel_category",
+        "channel",
+        ("channel", "source", "medium", "campaign", "utm", "platform", "referrer"),
+        ("dimension",),
+    ),
+    Rule(
+        "category", "category", ("category", "type", "class", "group", "department", "line", "family"), ("dimension",)
+    ),
+    Rule(
+        "status_category",
+        "status",
+        ("status", "stage", "outcome", "result", "churned", "active", "is_active", "flag"),
+        ("dimension",),
+    ),
+    Rule(
+        "employee_dimension",
+        "employee",
+        ("rep", "agent", "employee", "owner", "manager", "salesperson"),
+        ("dimension", "text"),
+    ),
 )
 
 _PII_NAME = re.compile(
@@ -145,9 +229,15 @@ def interpret_column(column: ColumnProfile) -> dict[str, Any]:
             if any(k in name.lower() for k in keys):
                 concept = candidate
                 break
-        result.update(semantic_type="date" if column.inferred_type == "date" else "datetime"
-                      if column.inferred_type == "datetime" else "time_period", concept=concept,
-                      confidence=0.95 if column.inferred_type in {"date", "datetime"} else 0.75)
+        result.update(
+            semantic_type="date"
+            if column.inferred_type == "date"
+            else "datetime"
+            if column.inferred_type == "datetime"
+            else "time_period",
+            concept=concept,
+            confidence=0.95 if column.inferred_type in {"date", "datetime"} else 0.75,
+        )
         return result
     if column.role == "identifier":
         concept = "identifier"
@@ -155,8 +245,11 @@ def interpret_column(column: ColumnProfile) -> dict[str, Any]:
             if "identifier" in rule.roles and _name_score(name, rule) >= 0.6:
                 concept = f"{rule.concept}_id"
                 break
-        result.update(semantic_type="identifier", concept=concept, confidence=0.9 if "_id" in name or
-                      name.lower() == "id" else 0.7)
+        result.update(
+            semantic_type="identifier",
+            concept=concept,
+            confidence=0.9 if "_id" in name or name.lower() == "id" else 0.7,
+        )
         return result
 
     scored: list[tuple[float, Rule]] = []
@@ -173,8 +266,7 @@ def interpret_column(column: ColumnProfile) -> dict[str, Any]:
         confidence, rule = scored[0]
         result.update(semantic_type=rule.semantic_type, concept=rule.concept, confidence=round(confidence, 2))
         result["alternatives"] = [
-            {"semantic_type": r.semantic_type, "concept": r.concept, "confidence": round(s, 2)}
-            for s, r in scored[1:3]
+            {"semantic_type": r.semantic_type, "concept": r.concept, "confidence": round(s, 2)} for s, r in scored[1:3]
         ]
     else:
         fallback = {

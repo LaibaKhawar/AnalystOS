@@ -17,8 +17,9 @@ from app.services.sql.validator import Catalog
 def duck(tmp_path: Path) -> DuckDBEngine:
     path = tmp_path / "d.duckdb"
     con = duckdb.connect(str(path))
-    con.execute("CREATE TABLE sales AS SELECT range AS id, range % 5 AS region, range * 1.5 AS revenue "
-                "FROM range(20000)")
+    con.execute(
+        "CREATE TABLE sales AS SELECT range AS id, range % 5 AS region, range * 1.5 AS revenue FROM range(20000)"
+    )
     con.close()
     return DuckDBEngine(path)
 
@@ -64,8 +65,9 @@ def test_sqlite_engine_is_read_only(tmp_path: Path) -> None:
     con.execute("INSERT INTO t VALUES (1), (2)")
     con.commit()
     con.close()
-    engine = SQLAlchemyEngine("sqlite", build_url("sqlite", host=None, port=None, database=str(path), username=None,
-                                                  password=None))
+    engine = SQLAlchemyEngine(
+        "sqlite", build_url("sqlite", host=None, port=None, database=str(path), username=None, password=None)
+    )
     assert engine.execute("SELECT SUM(a) FROM t", max_rows=5, timeout_seconds=5).rows == [[3]]
     with pytest.raises(QueryFailed):
         engine.execute("INSERT INTO t VALUES (3)", max_rows=5, timeout_seconds=5)
@@ -85,9 +87,19 @@ def test_postgres_engine_read_only_and_timeout(settings) -> None:  # type: ignor
         conn.execute(text("CREATE TABLE ro_test.orders (id int, amount numeric)"))
         conn.execute(text("INSERT INTO ro_test.orders VALUES (1, 10.5), (2, 20)"))
     url = make_url(settings.database_url)
-    engine = SQLAlchemyEngine("postgresql", build_url("postgresql", host=url.host, port=url.port, database=url.database,
-                                                      username=url.username, password=url.password),
-                              schema="ro_test", timeout_seconds=1)
+    engine = SQLAlchemyEngine(
+        "postgresql",
+        build_url(
+            "postgresql",
+            host=url.host,
+            port=url.port,
+            database=url.database,
+            username=url.username,
+            password=url.password,
+        ),
+        schema="ro_test",
+        timeout_seconds=1,
+    )
     try:
         assert engine.execute("SELECT SUM(amount) FROM ro_test.orders", max_rows=5, timeout_seconds=1).rows == [[30.5]]
         with pytest.raises(QueryFailed, match="read-only"):

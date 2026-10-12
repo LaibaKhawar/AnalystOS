@@ -27,8 +27,21 @@ def logical_type(physical: str) -> str:
     p = physical.upper()
     if p in {"BOOLEAN", "BOOL"}:
         return "boolean"
-    if any(p.startswith(t) for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT",
-                                       "UINTEGER", "UBIGINT", "INT")):
+    if any(
+        p.startswith(t)
+        for t in (
+            "TINYINT",
+            "SMALLINT",
+            "INTEGER",
+            "BIGINT",
+            "HUGEINT",
+            "UTINYINT",
+            "USMALLINT",
+            "UINTEGER",
+            "UBIGINT",
+            "INT",
+        )
+    ):
         return "integer"
     if any(p.startswith(t) for t in ("DOUBLE", "FLOAT", "REAL", "DECIMAL", "NUMERIC")):
         return "float"
@@ -137,9 +150,7 @@ def _profile_column(
         "unique_ratio": round(distinct / non_null, 4) if non_null else 0.0,
     }
     flags: list[str] = []
-    examples = con.execute(
-        f"SELECT DISTINCT {c} FROM {t} WHERE {c} IS NOT NULL LIMIT 5"
-    ).fetchall()
+    examples = con.execute(f"SELECT DISTINCT {c} FROM {t} WHERE {c} IS NOT NULL LIMIT 5").fetchall()
     stats["examples"] = [_clean(r[0]) for r in examples]
 
     if kind in {"integer", "float"} and non_null:
@@ -153,15 +164,21 @@ def _profile_column(
         assert row is not None
         mn, mx, mean, median, std, q1, q3, zeros, negatives, total = row
         stats.update(
-            min=_clean(mn), max=_clean(mx), mean=_clean(mean), median=_clean(median), std=_clean(std),
-            q1=_clean(q1), q3=_clean(q3), zeros=int(zeros or 0), negatives=int(negatives or 0), sum=_clean(total),
+            min=_clean(mn),
+            max=_clean(mx),
+            mean=_clean(mean),
+            median=_clean(median),
+            std=_clean(std),
+            q1=_clean(q1),
+            q3=_clean(q3),
+            zeros=int(zeros or 0),
+            negatives=int(negatives or 0),
+            sum=_clean(total),
         )
         if q1 is not None and q3 is not None:
             iqr = float(q3) - float(q1)
             low, high = float(q1) - 1.5 * iqr, float(q3) + 1.5 * iqr
-            outliers = con.execute(
-                f"SELECT count(*) FROM {t} WHERE {c} < ? OR {c} > ?", [low, high]
-            ).fetchone()
+            outliers = con.execute(f"SELECT count(*) FROM {t} WHERE {c} < ? OR {c} > ?", [low, high]).fetchone()
             stats["outlier_count_iqr"] = int(outliers[0]) if outliers else 0
             stats["outlier_bounds"] = [_clean(low), _clean(high)]
             if iqr > 0:
@@ -189,18 +206,21 @@ def _profile_column(
         ).fetchall()
         stats["top_values"] = [{"value": r[0], "count": int(r[1])} for r in top]
         sample = [
-            r[0] for r in con.execute(
-                f"SELECT {c} FROM {t} WHERE {c} IS NOT NULL USING SAMPLE 2000 ROWS"
-            ).fetchall()
+            r[0] for r in con.execute(f"SELECT {c} FROM {t} WHERE {c} IS NOT NULL USING SAMPLE 2000 ROWS").fetchall()
         ]
-        if any(_INJECTION_PATTERNS.search(str(v)) for v in sample) or con.execute(
+        matches = con.execute(
             f"SELECT count(*) FROM {t} WHERE regexp_matches({c}, ?, 'i')", [_INJECTION_PATTERNS.pattern]
-        ).fetchone()[0]:  # type: ignore[index]
+        ).fetchone()
+        if any(_INJECTION_PATTERNS.search(str(v)) for v in sample) or (matches and matches[0]):
             flags.append("possible_prompt_injection")
         if sample:
             emails = sum(bool(re.match(_EMAIL, str(v))) for v in sample) / len(sample)
-            phones = sum(bool(re.match(_PHONE, str(v))) and not _DATE_SHAPE.match(str(v))
-                         and sum(ch.isdigit() for ch in str(v)) >= 9 for v in sample) / len(sample)
+            phones = sum(
+                bool(re.match(_PHONE, str(v)))
+                and not _DATE_SHAPE.match(str(v))
+                and sum(ch.isdigit() for ch in str(v)) >= 9
+                for v in sample
+            ) / len(sample)
             if emails > 0.6:
                 flags.append("pii_email")
             if phones > 0.6:
@@ -264,7 +284,7 @@ def infer_role(column: ColumnProfile, row_count: int) -> str:
 
 def _is_sequence(stats: dict[str, Any]) -> bool:
     mn, mx, count = stats.get("min"), stats.get("max"), stats.get("count")
-    return mn is not None and mx is not None and count and (float(mx) - float(mn) + 1) == count
+    return bool(mn is not None and mx is not None and count and (float(mx) - float(mn) + 1) == count)
 
 
 def _looks_like_measure(name: str) -> bool:

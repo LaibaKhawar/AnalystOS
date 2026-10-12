@@ -41,9 +41,12 @@ def introspect_source(db: Session, source: DataSource, engine: SQLAlchemyEngine)
             if source.db_schema:
                 qualified = f"{preparer.quote(source.db_schema)}.{qualified}"
             try:
-                count = engine.execute(f"SELECT COUNT(*) FROM {qualified}", max_rows=1, timeout_seconds=30)  # noqa: S608
-                sample = engine.execute(f"SELECT * FROM {qualified} LIMIT {SAMPLE_ROWS}",  # noqa: S608
-                                        max_rows=SAMPLE_ROWS, timeout_seconds=60)
+                count = engine.execute(f"SELECT COUNT(*) FROM {qualified}", max_rows=1, timeout_seconds=30)
+                sample = engine.execute(
+                    f"SELECT * FROM {qualified} LIMIT {SAMPLE_ROWS}",
+                    max_rows=SAMPLE_ROWS,
+                    timeout_seconds=60,
+                )
             except QueryFailed as exc:
                 log.warning("introspect_table_failed", table=info.name, error=str(exc)[:200])
                 continue
@@ -66,10 +69,18 @@ def introspect_source(db: Session, source: DataSource, engine: SQLAlchemyEngine)
             profile.table["row_count"] = true_rows
             if sampled:
                 profile.table["warnings"].append(
-                    f"Profile computed on a sample of {len(frame):,} of {true_rows:,} rows")
+                    f"Profile computed on a sample of {len(frame):,} of {true_rows:,} rows"
+                )
             profiles.append(profile)
-            loaded.append(LoadedTable(name=info.name, display_name=info.name, original_columns=list(frame.columns),
-                                      columns=list(frame.columns), row_count=true_rows))
+            loaded.append(
+                LoadedTable(
+                    name=info.name,
+                    display_name=info.name,
+                    original_columns=list(frame.columns),
+                    columns=list(frame.columns),
+                    row_count=true_rows,
+                )
+            )
     finally:
         con.close()
     return persist_tables(db, source, loaded, profiles, None)

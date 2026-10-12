@@ -45,8 +45,9 @@ def get_report(report_id: str, user: User = Depends(current_user), db: Session =
 
 
 @router.get("/reports/{report_id}/html", response_class=HTMLResponse)
-def report_html(report_id: str, download: bool = False, user: User = Depends(current_user),
-                db: Session = Depends(get_db)) -> HTMLResponse:
+def report_html(
+    report_id: str, download: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> HTMLResponse:
     report = _owned(db, user, report_id)
     headers = {"Content-Disposition": f'attachment; filename="{report.id}.html"'} if download else {}
     headers["Content-Security-Policy"] = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
@@ -60,8 +61,9 @@ def report_pdf(report_id: str, user: User = Depends(current_user), db: Session =
         pdf = render_pdf(report.html)
     except RuntimeError as exc:
         raise AnalystError(str(exc)) from exc
-    return Response(pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{report.id}.pdf"'})
+    return Response(
+        pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{report.id}.pdf"'}
+    )
 
 
 @router.get("/reports/{report_id}/results.xlsx")
@@ -77,6 +79,8 @@ def report_results(report_id: str, user: User = Depends(current_user), db: Sessi
             frame.to_excel(writer, sheet_name=sheet, index=False)
         if not tables:
             pd.DataFrame().to_excel(writer, sheet_name="empty")
-    return Response(buffer.getvalue(),
-                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="{report.id}-results.xlsx"'})
+    return Response(
+        buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{report.id}-results.xlsx"'},
+    )

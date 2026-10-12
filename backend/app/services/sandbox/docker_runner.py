@@ -14,6 +14,7 @@ The container receives an empty environment, so application secrets never reach 
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import tarfile
@@ -104,19 +105,29 @@ class DockerSandbox:
     def run(self, code: str, tables: dict[str, Path], *, max_rows: int = 5000) -> SandboxResult:
         settings = self.settings
         limits = {
-            "cpus": settings.sandbox_cpus, "memory_mb": settings.sandbox_memory_mb,
-            "timeout_seconds": settings.sandbox_timeout_seconds, "network": "none", "pids": settings.sandbox_pids_limit,
-            "read_only_rootfs": True, "user": SANDBOX_UID,
+            "cpus": settings.sandbox_cpus,
+            "memory_mb": settings.sandbox_memory_mb,
+            "timeout_seconds": settings.sandbox_timeout_seconds,
+            "network": "none",
+            "pids": settings.sandbox_pids_limit,
+            "read_only_rootfs": True,
+            "user": SANDBOX_UID,
         }
         check = check_code(code)
         if not check.ok:
             SANDBOX_RUNS.labels(status="blocked").inc()
-            return SandboxResult(status="blocked", error_type="StaticCheckFailed",
-                                 error_message="; ".join(check.violations), static_check=check, limits=limits)
+            return SandboxResult(
+                status="blocked",
+                error_type="StaticCheckFailed",
+                error_message="; ".join(check.violations),
+                static_check=check,
+                limits=limits,
+            )
         return self.execute_unchecked(code, tables, max_rows=max_rows, check=check)
 
-    def execute_unchecked(self, code: str, tables: dict[str, Path], *, max_rows: int = 5000,
-                          check: StaticCheckResult | None = None) -> SandboxResult:
+    def execute_unchecked(
+        self, code: str, tables: dict[str, Path], *, max_rows: int = 5000, check: StaticCheckResult | None = None
+    ) -> SandboxResult:
         """Run code in the container WITHOUT the static pre-check.
 
         Only `run()` and the isolation test-suite call this; the tests use it to prove the container
@@ -124,15 +135,24 @@ class DockerSandbox:
         """
         settings = self.settings
         limits = {
-            "cpus": settings.sandbox_cpus, "memory_mb": settings.sandbox_memory_mb,
-            "timeout_seconds": settings.sandbox_timeout_seconds, "network": "none", "pids": settings.sandbox_pids_limit,
-            "read_only_rootfs": True, "user": SANDBOX_UID,
+            "cpus": settings.sandbox_cpus,
+            "memory_mb": settings.sandbox_memory_mb,
+            "timeout_seconds": settings.sandbox_timeout_seconds,
+            "network": "none",
+            "pids": settings.sandbox_pids_limit,
+            "read_only_rootfs": True,
+            "user": SANDBOX_UID,
         }
         ok, reason = self.available()
         if not ok:
             SANDBOX_RUNS.labels(status="unavailable").inc()
-            return SandboxResult(status="unavailable", error_type="SandboxUnavailable", error_message=reason,
-                                 static_check=check, limits=limits)
+            return SandboxResult(
+                status="unavailable",
+                error_type="SandboxUnavailable",
+                error_message=reason,
+                static_check=check,
+                limits=limits,
+            )
 
         client = self._docker()
         started = time.perf_counter()
@@ -150,7 +170,7 @@ class DockerSandbox:
                 read_only=True,
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges:true"],
-                tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+                tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=64m"},  # noqa: S108  # nosec B108 - path inside the container
                 volumes={volume.name: {"bind": "/work", "mode": "rw"}},
                 environment={},
                 ipc_mode="private",
@@ -166,10 +186,8 @@ class DockerSandbox:
             except Exception:
                 timed_out = True
                 exit_code = -1
-                try:
+                with contextlib.suppress(Exception):  # it may already have exited
                     container.kill()
-                except Exception:  # noqa: S110 - already exited
-                    pass
             duration = int((time.perf_counter() - started) * 1000)
             stdout = container.logs(stdout=True, stderr=False)[-_MAX_LOG_BYTES:].decode(errors="replace")
             stderr = container.logs(stdout=False, stderr=True)[-_MAX_LOG_BYTES:].decode(errors="replace")
@@ -178,26 +196,41 @@ class DockerSandbox:
             if timed_out:
                 SANDBOX_RUNS.labels(status="timeout").inc()
                 return SandboxResult(
-                    status="timeout", error_type="Timeout",
+                    status="timeout",
+                    error_type="Timeout",
                     error_message=f"Execution exceeded the {settings.sandbox_timeout_seconds}s limit and was stopped",
-                    stdout=stdout, stderr=stderr, duration_ms=duration, exit_code=exit_code, static_check=check,
+                    stdout=stdout,
+                    stderr=stderr,
+                    duration_ms=duration,
+                    exit_code=exit_code,
+                    static_check=check,
                     limits=limits,
                 )
             if oom or exit_code == 137:
                 SANDBOX_RUNS.labels(status="oom").inc()
                 return SandboxResult(
-                    status="oom", error_type="MemoryError",
+                    status="oom",
+                    error_type="MemoryError",
                     error_message=f"Execution exceeded the {settings.sandbox_memory_mb} MB memory limit",
-                    stdout=stdout, stderr=stderr, duration_ms=duration, exit_code=exit_code, static_check=check,
+                    stdout=stdout,
+                    stderr=stderr,
+                    duration_ms=duration,
+                    exit_code=exit_code,
+                    static_check=check,
                     limits=limits,
                 )
             payload, artifacts = self._collect(container)
             if payload is None:
                 SANDBOX_RUNS.labels(status="error").inc()
                 return SandboxResult(
-                    status="error", error_type="NoResult",
+                    status="error",
+                    error_type="NoResult",
                     error_message=(stderr.strip().splitlines() or ["The sandbox produced no result"])[-1][:500],
-                    stdout=stdout, stderr=stderr, duration_ms=duration, exit_code=exit_code, static_check=check,
+                    stdout=stdout,
+                    stderr=stderr,
+                    duration_ms=duration,
+                    exit_code=exit_code,
+                    static_check=check,
                     limits=limits,
                 )
             status = "success" if payload.get("status") == "success" else "error"
@@ -206,17 +239,30 @@ class DockerSandbox:
             for artifact in artifacts:
                 artifact["title"] = titles.get(artifact["file"], artifact["file"])
             return SandboxResult(
-                status=status, result=payload.get("result"), error_type=payload.get("error_type"),
-                error_message=payload.get("error_message"), line=payload.get("line"), stdout=stdout, stderr=stderr,
-                artifacts=artifacts, duration_ms=duration, exit_code=exit_code, static_check=check, limits=limits,
+                status=status,
+                result=payload.get("result"),
+                error_type=payload.get("error_type"),
+                error_message=payload.get("error_message"),
+                line=payload.get("line"),
+                stdout=stdout,
+                stderr=stderr,
+                artifacts=artifacts,
+                duration_ms=duration,
+                exit_code=exit_code,
+                static_check=check,
+                limits=limits,
             )
         except Exception as exc:
             log.exception("sandbox_failure")
             SANDBOX_RUNS.labels(status="failure").inc()
-            return SandboxResult(status="error", error_type="SandboxFailure",
-                                 error_message=f"Sandbox infrastructure error: {exc.__class__.__name__}",
-                                 duration_ms=int((time.perf_counter() - started) * 1000), static_check=check,
-                                 limits=limits)
+            return SandboxResult(
+                status="error",
+                error_type="SandboxFailure",
+                error_message=f"Sandbox infrastructure error: {exc.__class__.__name__}",
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                static_check=check,
+                limits=limits,
+            )
         finally:
             if container is not None:
                 try:

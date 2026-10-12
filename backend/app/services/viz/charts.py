@@ -52,8 +52,16 @@ def _is_dateish(series: pd.Series) -> bool:
 
 
 def build_chart(
-    chart_type: str, columns: list[dict[str, str]], rows: list[list[Any]], *, x: str, y: list[str],
-    series: str | None = None, title: str, bins: int = 20, max_points: int = 2000,
+    chart_type: str,
+    columns: list[dict[str, str]],
+    rows: list[list[Any]],
+    *,
+    x: str,
+    y: list[str],
+    series: str | None = None,
+    title: str,
+    bins: int = 20,
+    max_points: int = 2000,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if chart_type not in CHART_TYPES:
         raise ChartSpecError(f"chart_type must be one of {', '.join(CHART_TYPES)}")
@@ -64,14 +72,27 @@ def build_chart(
         raise ChartSpecError(f"Columns {missing} are not in the result. Available: {names}")
     if frame.empty:
         raise ChartSpecError("The result has no rows to chart")
-    spec: dict[str, Any] = {"type": chart_type, "title": title, "x": x, "y": y, "series": series,
-                            "x_label": x, "y_label": ", ".join(y)}
+    spec: dict[str, Any] = {
+        "type": chart_type,
+        "title": title,
+        "x": x,
+        "y": y,
+        "series": series,
+        "x_label": x,
+        "y_label": ", ".join(y),
+    }
     if chart_type == "histogram":
         values = pd.to_numeric(frame[x], errors="coerce").dropna()
         counts, edges = np.histogram(values, bins=min(bins, max(5, int(np.sqrt(len(values))))))
-        data = [{"bin_start": float(edges[i]), "bin_end": float(edges[i + 1]),
-                 "label": f"{edges[i]:.4g} to {edges[i + 1]:.4g}", "count": int(c)}
-                for i, c in enumerate(counts)]
+        data = [
+            {
+                "bin_start": float(edges[i]),
+                "bin_end": float(edges[i + 1]),
+                "label": f"{edges[i]:.4g} to {edges[i + 1]:.4g}",
+                "count": int(c),
+            }
+            for i, c in enumerate(counts)
+        ]
         spec.update(x="label", y=["count"], y_zero=True, x_label=x, y_label="count")
         return spec, data
     if chart_type == "box":
@@ -85,8 +106,18 @@ def build_chart(
             iqr = q3 - q1
             lo = float(values[values >= q1 - 1.5 * iqr].min())
             hi = float(values[values <= q3 + 1.5 * iqr].max())
-            data.append({"group": str(key), "min": lo, "q1": float(q1), "median": float(med), "q3": float(q3),
-                         "max": hi, "outliers": int(((values < lo) | (values > hi)).sum()), "n": int(values.size)})
+            data.append(
+                {
+                    "group": str(key),
+                    "min": lo,
+                    "q1": float(q1),
+                    "median": float(med),
+                    "q3": float(q3),
+                    "max": hi,
+                    "outliers": int(((values < lo) | (values > hi)).sum()),
+                    "n": int(values.size),
+                }
+            )
         spec.update(x="group", y=["median"], y_zero=False)
         return spec, data
     if chart_type == "heatmap":
@@ -109,12 +140,14 @@ def build_chart(
         frame = pivot
     if chart_type in {"line", "area"}:
         frame = frame.sort_values(x)
-    data = [{k: (_num(v) if k != x else (str(v) if v is not None else None)) for k, v in record.items()}
-            for record in frame[[x, *spec["y"]]].head(max_points).to_dict(orient="records")]
+    data = [
+        {str(k): (_num(v) if k != x else (str(v) if v is not None else None)) for k, v in record.items()}
+        for record in frame[[x, *spec["y"]]].head(max_points).to_dict(orient="records")
+    ]
     spec["y_zero"] = chart_type in {"bar", "stacked_bar", "area"}
     if chart_type in {"line"}:
-        values = [d[k] for d in data for k in spec["y"] if d.get(k) is not None]
-        if values and min(values) > 0 and (max(values) - min(values)) / max(values) < 0.05:
+        points = [float(v) for d in data for k in spec["y"] if isinstance(v := d.get(k), int | float)]
+        if points and min(points) > 0 and (max(points) - min(points)) / max(points) < 0.05:
             spec["note"] = "Values vary by less than 5%; the axis is zoomed to make the variation visible."
     return spec, data
 

@@ -27,9 +27,23 @@ log = get_logger(__name__)
 
 # Errors the agent can plausibly fix by changing its arguments.
 RECOVERABLE_KINDS = {
-    "invalid_arguments", "unknown_column", "unknown_table", "syntax", "type_error", "execution_error",
-    "python_error", "missing_result", "empty_result", "unknown_result", "bad_period", "invalid_chart",
-    "statement_type", "forbidden_operation", "forbidden_function", "restricted_column", "static_check",
+    "invalid_arguments",
+    "unknown_column",
+    "unknown_table",
+    "syntax",
+    "type_error",
+    "execution_error",
+    "python_error",
+    "missing_result",
+    "empty_result",
+    "unknown_result",
+    "bad_period",
+    "invalid_chart",
+    "statement_type",
+    "forbidden_operation",
+    "forbidden_function",
+    "restricted_column",
+    "static_check",
 }
 
 
@@ -126,13 +140,25 @@ class ToolRunner:
         self.tools = tools
 
     def execute(
-        self, tool_name: str, raw_args: dict[str, Any], *, step_id: str | None = None, attempt: int = 1,
-        retry_of: str | None = None, retry_reason: str | None = None,
+        self,
+        tool_name: str,
+        raw_args: dict[str, Any],
+        *,
+        step_id: str | None = None,
+        attempt: int = 1,
+        retry_of: str | None = None,
+        retry_reason: str | None = None,
     ) -> ToolOutcome:
         ctx = self.ctx
         record = ToolExecution(
-            analysis_id=ctx.analysis_id, step_id=step_id, tool=tool_name, input=_jsonable(raw_args), status="error",
-            attempt=attempt, retry_of_id=retry_of, retry_reason=retry_reason,
+            analysis_id=ctx.analysis_id,
+            step_id=step_id,
+            tool=tool_name,
+            input=_jsonable(raw_args),
+            status="error",
+            attempt=attempt,
+            retry_of_id=retry_of,
+            retry_reason=retry_reason,
         )
         ctx.db.add(record)
         ctx.db.flush()
@@ -150,16 +176,22 @@ class ToolRunner:
                 problems = "; ".join(
                     f"{'.'.join(str(x) for x in e['loc']) or 'args'}: {e['msg']}" for e in exc.errors()[:6]
                 )
-                raise ToolError("invalid_arguments", f"Invalid arguments for {tool_name}: {problems}",
-                                {"expected": tool.schema_hint()}) from exc
+                raise ToolError(
+                    "invalid_arguments",
+                    f"Invalid arguments for {tool_name}: {problems}",
+                    {"expected": tool.schema_hint()},
+                ) from exc
             result = tool.run(ctx, args)
         except ToolError as exc:
             error = exc
         except AnalystError as exc:
             kind = str(exc.details.get("kind") or exc.code)
             hints = {k: v for k, v in exc.details.items() if k != "kind"}
-            error = ToolError(kind if kind in RECOVERABLE_KINDS else "invalid_arguments"
-                              if exc.code == "validation_failed" else kind, exc.message, hints)
+            error = ToolError(
+                kind if kind in RECOVERABLE_KINDS else "invalid_arguments" if exc.code == "validation_failed" else kind,
+                exc.message,
+                hints,
+            )
         except Exception as exc:  # unexpected bug: never leak internals to the model
             log.error("tool_crashed", tool=tool_name, error=repr(exc), trace=traceback.format_exc()[-2000:])
             error = ToolError("internal_error", f"The {tool_name} tool failed unexpectedly ({exc.__class__.__name__})")
@@ -170,10 +202,15 @@ class ToolRunner:
         if error is None and result is not None:
             record.status = "success"
             labels = ctx.store_findings(result.findings, record.id, result.result_table_id)
-            record.output = _jsonable({
-                "summary": result.summary, "result_table_id": result.result_table_id,
-                "findings": labels, "chart_ids": result.chart_ids, "data": result.data,
-            })
+            record.output = _jsonable(
+                {
+                    "summary": result.summary,
+                    "result_table_id": result.result_table_id,
+                    "findings": labels,
+                    "chart_ids": result.chart_ids,
+                    "data": result.data,
+                }
+            )
         else:
             assert error is not None
             record.error, record.error_kind = error.message[:2000], error.kind
@@ -182,8 +219,14 @@ class ToolRunner:
         status = "success" if error is None else "error"
         TOOL_CALLS.labels(tool=tool_name, status=status).inc()
         TOOL_LATENCY.labels(tool=tool_name, status=status).observe(duration / 1000)
-        log.info("tool_executed", tool=tool_name, status=status, duration_ms=duration, attempt=attempt,
-                 error_kind=error.kind if error else None)
+        log.info(
+            "tool_executed",
+            tool=tool_name,
+            status=status,
+            duration_ms=duration,
+            attempt=attempt,
+            error_kind=error.kind if error else None,
+        )
         return ToolOutcome(tool_name, record.id, error is None, result, error, duration, labels)
 
 

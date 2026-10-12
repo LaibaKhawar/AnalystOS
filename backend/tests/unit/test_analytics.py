@@ -85,12 +85,19 @@ def test_zscore_iqr_isolation_forest() -> None:
     assert required <= set(found[0].as_dict())
 
 
-@pytest.mark.parametrize(("spec", "start", "end"), [
-    ("2026-Q3", "2026-07-01", "2026-09-30"), ("Q1 2026", "2026-01-01", "2026-03-31"),
-    ("2026-02", "2026-02-01", "2026-02-28"), ("March 2026", "2026-03-01", "2026-03-31"),
-    ("2026", "2026-01-01", "2026-12-31"), ("H2 2026", "2026-07-01", "2026-12-31"),
-    ("2026-Q2..2026-Q3", "2026-04-01", "2026-09-30"), ("2026-01-05..2026-01-09", "2026-01-05", "2026-01-09"),
-])
+@pytest.mark.parametrize(
+    ("spec", "start", "end"),
+    [
+        ("2026-Q3", "2026-07-01", "2026-09-30"),
+        ("Q1 2026", "2026-01-01", "2026-03-31"),
+        ("2026-02", "2026-02-01", "2026-02-28"),
+        ("March 2026", "2026-03-01", "2026-03-31"),
+        ("2026", "2026-01-01", "2026-12-31"),
+        ("H2 2026", "2026-07-01", "2026-12-31"),
+        ("2026-Q2..2026-Q3", "2026-04-01", "2026-09-30"),
+        ("2026-01-05..2026-01-09", "2026-01-05", "2026-01-09"),
+    ],
+)
 def test_parse_period(spec: str, start: str, end: str) -> None:
     period = parse_period(spec)
     assert (period.start.isoformat(), period.end.isoformat()) == (start, end)
@@ -106,9 +113,11 @@ def test_relative_periods() -> None:
 
 def test_query_builder_escapes_and_checks_columns() -> None:
     qb = QueryBuilder("sales", {"region": "VARCHAR", "revenue": "DOUBLE", "date": "DATE"}, "duckdb")
-    sql = qb.select([qb.col("region"), qb.metric_expr(MetricSpec(column="revenue")).as_("revenue")],
-                    filters=[Filter(column="region", op="in", value=["North", "O'Brien'; DROP TABLE x;--"])],
-                    group_by=[qb.col("region")])
+    sql = qb.select(
+        [qb.col("region"), qb.metric_expr(MetricSpec(column="revenue")).as_("revenue")],
+        filters=[Filter(column="region", op="in", value=["North", "O'Brien'; DROP TABLE x;--"])],
+        group_by=[qb.col("region")],
+    )
     assert "'O''Brien''; DROP TABLE x;--'" in sql
     with pytest.raises(ValidationFailed) as err:
         qb.col("regions")

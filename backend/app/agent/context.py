@@ -61,8 +61,9 @@ class EventEmitter:
             return
         try:
             with session_scope() as session:
-                session.add(AnalysisEvent(analysis_id=self.analysis_id, type=type_, message=message[:500],
-                                          payload=payload))
+                session.add(
+                    AnalysisEvent(analysis_id=self.analysis_id, type=type_, message=message[:500], payload=payload)
+                )
         except Exception as exc:  # progress events must never break an analysis
             log.warning("event_emit_failed", error=exc.__class__.__name__)
 
@@ -97,15 +98,20 @@ class ToolContext:
         if not name:
             if len(tables) == 1:
                 return tables[0]
-            raise ToolError("invalid_arguments", "This data source has several tables; pass 'table'",
-                            {"available": [t.name for t in tables]})
+            raise ToolError(
+                "invalid_arguments",
+                "This data source has several tables; pass 'table'",
+                {"available": [t.name for t in tables]},
+            )
         for table in tables:
             if table.name.lower() == name.lower() or table.display_name.lower() == name.lower():
                 return table
         options = suggest(name, [t.name for t in tables]) or ([tables[0].name] if len(tables) == 1 else [])
-        raise ToolError("unknown_table", f"Unknown table '{name}'." + (f" Did you mean: {', '.join(options)}?"
-                                                                       if options else ""),
-                        {"available": [t.name for t in tables], "suggestions": options, "table": name})
+        raise ToolError(
+            "unknown_table",
+            f"Unknown table '{name}'." + (f" Did you mean: {', '.join(options)}?" if options else ""),
+            {"available": [t.name for t in tables], "suggestions": options, "table": name},
+        )
 
     def columns(self, table: TableMetadata) -> dict[str, str]:
         return {c.name: c.physical_type for c in table.columns}
@@ -115,11 +121,24 @@ class ToolContext:
         return times[0].name if times else None
 
     # ---- results & findings -----------------------------------------------------------------------
-    def save_result_table(self, name: str, columns: list[dict[str, str]], rows: list[list[Any]], *,
-                          truncated: bool = False, source: dict[str, Any] | None = None) -> ResultTable:
+    def save_result_table(
+        self,
+        name: str,
+        columns: list[dict[str, str]],
+        rows: list[list[Any]],
+        *,
+        truncated: bool = False,
+        source: dict[str, Any] | None = None,
+    ) -> ResultTable:
         table = ResultTable(
-            analysis_id=self.analysis_id, tool_execution_id=self.current_execution_id, name=name[:200],
-            columns=columns, rows=rows[:5000], row_count=len(rows), truncated=truncated, source=source or {},
+            analysis_id=self.analysis_id,
+            tool_execution_id=self.current_execution_id,
+            name=name[:200],
+            columns=columns,
+            rows=rows[:5000],
+            row_count=len(rows),
+            truncated=truncated,
+            source=source or {},
         )
         self.db.add(table)
         self.db.flush()
@@ -132,8 +151,11 @@ class ToolContext:
         resolved = self.step_results.get(ref.lstrip("$"), ref)
         table = self.db.get(ResultTable, resolved)
         if table is None or table.analysis_id != self.analysis_id:
-            raise ToolError("unknown_result", f"Unknown result '{ref}'. Use a result_id returned by an earlier step",
-                            {"available": list(self.step_results.items())})
+            raise ToolError(
+                "unknown_result",
+                f"Unknown result '{ref}'. Use a result_id returned by an earlier step",
+                {"available": list(self.step_results.items())},
+            )
         return table
 
     def store_findings(self, drafts: list[FindingDraft], execution_id: str, result_table_id: str | None) -> list[str]:
@@ -142,8 +164,13 @@ class ToolContext:
             self.finding_counter += 1
             label = f"F{self.finding_counter}"
             finding = Finding(
-                analysis_id=self.analysis_id, tool_execution_id=execution_id, result_table_id=result_table_id,
-                label=label, kind=draft.kind, statement=draft.statement, values=_clean_values(draft.values),
+                analysis_id=self.analysis_id,
+                tool_execution_id=execution_id,
+                result_table_id=result_table_id,
+                label=label,
+                kind=draft.kind,
+                statement=draft.statement,
+                values=_clean_values(draft.values),
                 formula=draft.formula,
                 payload={**draft.payload, "entities": draft.entities, "periods": draft.periods},
             )
@@ -174,8 +201,10 @@ def render_schema(source: DataSource, *, max_examples: int = 4) -> str:
             parts = [f"  - {column.name}: {column.inferred_type}, role={column.role}"]
             if column.semantic_type:
                 certainty = "" if column.semantic_confidence >= 0.6 else " UNCERTAIN"
-                parts.append(f"meaning={stats.get('concept') or column.semantic_type}"
-                             f" ({column.semantic_confidence:.2f}{certainty})")
+                parts.append(
+                    f"meaning={stats.get('concept') or column.semantic_type}"
+                    f" ({column.semantic_confidence:.2f}{certainty})"
+                )
             if column.original_name != column.name:
                 parts.append(f'original="{sanitize_value(column.original_name, 40)}"')
             if stats.get("missing_pct"):

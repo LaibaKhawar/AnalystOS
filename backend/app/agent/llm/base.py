@@ -31,7 +31,12 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def complete(
-        self, messages: list[dict[str, Any]], *, purpose: str, json_mode: bool = False, temperature: float | None = None,
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        purpose: str,
+        json_mode: bool = False,
+        temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse: ...
 

@@ -14,11 +14,20 @@ from app.services.ingestion.naming import to_identifier, unique_identifiers
 from app.services.ingestion.service import build_dataset_files, detect_file_type
 
 
-@pytest.mark.parametrize(("raw", "expected"), [
-    ("Revenue ($)", "revenue_usd"), ("Customer ID", "customer_id"), ("2026 Sales", "col_2026_sales"),
-    ("Growth %", "growth_pct"), ("orderDate", "order_date"), ("  ", "column"), ("select", "select_"),
-    ("Région", "region"), ("date", "date"),
-])
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Revenue ($)", "revenue_usd"),
+        ("Customer ID", "customer_id"),
+        ("2026 Sales", "col_2026_sales"),
+        ("Growth %", "growth_pct"),
+        ("orderDate", "order_date"),
+        ("  ", "column"),
+        ("select", "select_"),
+        ("Région", "region"),
+        ("date", "date"),
+    ],
+)
 def test_identifiers(raw: str, expected: str) -> None:
     assert to_identifier(raw) == expected
 
@@ -34,8 +43,10 @@ def _write(tmp: Path, name: str, content: bytes) -> Path:
 
 
 def test_csv_semicolon_latin1_currency_malformed(tmp_path: Path) -> None:
-    text = ("Order Date;Region;Revenue ($);Growth %\n2026-01-03;North;\"$1,200.50\";12%\n2026-01-04;Sóuth;(300);5%\n"
-            "broken;row\n2026-01-05;East;$900;7%\n2026-01-06;West;$1,000;8%;extra\n")
+    text = (
+        'Order Date;Region;Revenue ($);Growth %\n2026-01-03;North;"$1,200.50";12%\n2026-01-04;Sóuth;(300);5%\n'
+        "broken;row\n2026-01-05;East;$900;7%\n2026-01-06;West;$1,000;8%;extra\n"
+    )
     path = _write(tmp_path, "messy.csv", text.encode("latin-1"))
     assert detect_encoding(path) == "cp1252"
     con = duckdb.connect()
@@ -107,14 +118,17 @@ def test_excel_multi_sheet_merged_cells(tmp_path: Path) -> None:
     tables = load_excel(con, path)
     assert [t.name for t in tables] == ["q3_summary", "products"]
     assert con.execute("SELECT region, revenue FROM q3_summary ORDER BY revenue").fetchall() == [
-        ("South", 90.5), ("North", 100.0), ("North", 120.0)]
+        ("South", 90.5),
+        ("North", 100.0),
+        ("North", 120.0),
+    ]
     assert any("Header detected on row 3" in w for w in tables[0].warnings)
     only = load_excel(duckdb.connect(), path, sheets=["Products"])
     assert [t.name for t in only] == ["products"]
 
 
 def test_build_dataset_files_sample_workbook(tmp_path: Path, data_dir: Path) -> None:
-    tables, profiles, report = build_dataset_files(data_dir / "sales_2026.xlsx", "xlsx", "sales", tmp_path / "out")
+    tables, profiles, _report = build_dataset_files(data_dir / "sales_2026.xlsx", "xlsx", "sales", tmp_path / "out")
     names = {t.name for t in tables}
     assert names == {"transactions", "targets", "regions"}
     assert (tmp_path / "out" / "parquet" / "transactions.parquet").exists()

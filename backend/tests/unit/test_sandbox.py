@@ -32,8 +32,10 @@ def test_static_check_blocks(code: str) -> None:
 
 
 def test_static_check_allows_analysis_code() -> None:
-    code = ("import numpy as np\nfrom scipy import stats\nfrom sklearn.linear_model import LinearRegression\n"
-            "g = df.groupby('region')['revenue'].agg(['sum', 'mean']).reset_index()\nresult = g")
+    code = (
+        "import numpy as np\nfrom scipy import stats\nfrom sklearn.linear_model import LinearRegression\n"
+        "g = df.groupby('region')['revenue'].agg(['sum', 'mean']).reset_index()\nresult = g"
+    )
     assert check_code(code).ok
 
 
@@ -84,8 +86,15 @@ def test_container_isolation_without_static_check(table: dict[str, Path]) -> Non
     result = sandbox.execute_unchecked(code, table)
     assert result.ok, result.error_message
     value = result.result["value"]
-    assert value == {"env_has_canary": False, "uid": 65534, "docker_sock": False, "host_users": False,
-                     "network": "blocked", "input_writable": False, "rootfs_writable": False}
+    assert value == {
+        "env_has_canary": False,
+        "uid": 65534,
+        "docker_sock": False,
+        "host_users": False,
+        "network": "blocked",
+        "input_writable": False,
+        "rootfs_writable": False,
+    }
 
 
 @pytestmark_docker

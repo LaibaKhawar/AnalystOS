@@ -44,7 +44,12 @@ class OpenAICompatibleProvider(LLMProvider):
         return f"{base}/chat/completions", {"Authorization": f"Bearer {s.llm_api_key}"}
 
     def complete(
-        self, messages: list[dict[str, Any]], *, purpose: str, json_mode: bool = False, temperature: float | None = None,
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        purpose: str,
+        json_mode: bool = False,
+        temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse:
         url, headers = self._endpoint()
@@ -90,8 +95,14 @@ class OpenAICompatibleProvider(LLMProvider):
         LLM_LATENCY.labels(model=self.model, purpose=purpose).observe(latency / 1000)
         LLM_TOKENS.labels(model=self.model, direction="input").inc(usage.input_tokens)
         LLM_TOKENS.labels(model=self.model, direction="output").inc(usage.output_tokens)
-        log.info("llm_call", purpose=purpose, model=self.model, latency_ms=latency,
-                 input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
+        log.info(
+            "llm_call",
+            purpose=purpose,
+            model=self.model,
+            latency_ms=latency,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+        )
         return LLMResponse(
             content=strip_reasoning(message.get("content") or ""),
             model=str(data.get("model") or self.model),
@@ -108,7 +119,8 @@ class OpenAICompatibleProvider(LLMProvider):
             return None
         try:
             response = self._client.post(
-                f"{base}/embeddings", json={"model": s.embedding_model, "input": texts},
+                f"{base}/embeddings",
+                json={"model": s.embedding_model, "input": texts},
                 headers={"Authorization": f"Bearer {s.embedding_api_key or s.llm_api_key}"},
             )
             response.raise_for_status()

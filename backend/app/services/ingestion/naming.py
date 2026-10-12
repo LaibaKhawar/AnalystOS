@@ -4,12 +4,44 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
 
 _SYMBOL_WORDS = {"$": " usd ", "€": " eur ", "£": " gbp ", "%": " pct ", "#": " num ", "&": " and ", "+": " plus "}
 _RESERVED = {
-    "select", "from", "where", "group", "order", "by", "limit", "table", "join", "on", "as", "and", "or", "not",
-    "null", "case", "when", "then", "else", "end", "union", "all", "distinct", "having", "insert", "update",
-    "delete", "create", "drop", "with", "in", "is", "into", "values",
+    "select",
+    "from",
+    "where",
+    "group",
+    "order",
+    "by",
+    "limit",
+    "table",
+    "join",
+    "on",
+    "as",
+    "and",
+    "or",
+    "not",
+    "null",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "union",
+    "all",
+    "distinct",
+    "having",
+    "insert",
+    "update",
+    "delete",
+    "create",
+    "drop",
+    "with",
+    "in",
+    "is",
+    "into",
+    "values",
 }
 
 
@@ -31,7 +63,7 @@ def to_identifier(raw: object, fallback: str = "column") -> str:
     return text[:63]
 
 
-def unique_identifiers(raw_names: list[object], fallback: str = "column") -> list[str]:
+def unique_identifiers(raw_names: Sequence[object], fallback: str = "column") -> list[str]:
     seen: dict[str, int] = {}
     result: list[str] = []
     for index, raw in enumerate(raw_names):

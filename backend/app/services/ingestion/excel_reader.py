@@ -52,9 +52,7 @@ def infer_header_row(rows: list[list[Any]]) -> int:
             continue
         text_ratio = sum(isinstance(v, str) for v in filled) / len(filled)
         unique_ratio = len({str(v) for v in filled}) / len(filled)
-        has_data_below = any(
-            any(not _is_blank(v) for v in nxt) for nxt in rows[index + 1 : index + 4]
-        )
+        has_data_below = any(any(not _is_blank(v) for v in nxt) for nxt in rows[index + 1 : index + 4])
         score = text_ratio * 2 + unique_ratio + (len(filled) / width) + (1 if has_data_below else -2)
         if score > best_score + 1e-9:
             best_index, best_score = index, score
@@ -94,20 +92,15 @@ def sheet_to_frame(rows: list[list[Any]]) -> tuple[pd.DataFrame, list[str], int,
     width = max([len(header)] + [len(r) for r in body]) if body else len(header)
     header = list(header) + [None] * (width - len(header))
     keep = [
-        c for c in range(width)
-        if not _is_blank(header[c]) or any(c < len(r) and not _is_blank(r[c]) for r in body)
+        c for c in range(width) if not _is_blank(header[c]) or any(c < len(r) and not _is_blank(r[c]) for r in body)
     ]
     original = [str(header[c]).strip() if not _is_blank(header[c]) else f"column_{c + 1}" for c in keep]
-    columns = {
-        str(i): _normalise_column([r[c] if c < len(r) else None for r in body]) for i, c in enumerate(keep)
-    }
+    columns = {str(i): _normalise_column([r[c] if c < len(r) else None for r in body]) for i, c in enumerate(keep)}
     frame = pd.DataFrame(columns)
     return frame, original, header_index, warnings
 
 
-def load_excel(
-    con: duckdb.DuckDBPyConnection, path: Path, sheets: list[str] | None = None
-) -> list[LoadedTable]:
+def load_excel(con: duckdb.DuckDBPyConnection, path: Path, sheets: list[str] | None = None) -> list[LoadedTable]:
     read_only = path.stat().st_size > _READ_ONLY_THRESHOLD_BYTES
     try:
         workbook = load_workbook(path, read_only=read_only, data_only=True)

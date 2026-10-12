@@ -15,11 +15,11 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+import matplotlib.pyplot as plt
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from sqlalchemy.orm import Session
 
-from app.db.models import (  # noqa: E402
+from app.db.models import (
     Analysis,
     Chart,
     Claim,
@@ -32,10 +32,14 @@ from app.db.models import (  # noqa: E402
     ToolExecution,
 )
 
-_TEMPLATES = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"),
-                         autoescape=select_autoescape(["html"]))
+_TEMPLATES = Environment(
+    loader=FileSystemLoader(Path(__file__).parent / "templates"), autoescape=select_autoescape(["html"])
+)
 SECTION_TITLES = {
-    "trend": "Trends", "anomaly": "Anomalies", "segment": "Segment analysis", "driver": "Important drivers",
+    "trend": "Trends",
+    "anomaly": "Anomalies",
+    "segment": "Segment analysis",
+    "driver": "Important drivers",
     "finding": "Key findings",
 }
 ACCENT = "#0f766e"
@@ -79,8 +83,18 @@ def _chart_png(chart: Chart) -> str | None:
             ax.set_xlabel(str(x))
             ax.set_ylabel(str(y))
         elif chart.chart_type == "box":
-            stats = [{"label": d["group"], "whislo": d["min"], "q1": d["q1"], "med": d["median"], "q3": d["q3"],
-                      "whishi": d["max"], "fliers": []} for d in data]
+            stats = [
+                {
+                    "label": d["group"],
+                    "whislo": d["min"],
+                    "q1": d["q1"],
+                    "med": d["median"],
+                    "q3": d["q3"],
+                    "whishi": d["max"],
+                    "fliers": [],
+                }
+                for d in data
+            ]
             ax.bxp(stats, showfliers=False)
         else:
             plt.close(fig)
@@ -99,8 +113,12 @@ def _chart_png(chart: Chart) -> str | None:
 
 def report_content(db: Session, analysis: Analysis) -> dict[str, Any]:
     source = db.get(DataSource, analysis.data_source_id)
-    claims = db.query(Claim).filter(Claim.analysis_id == analysis.id, Claim.status != "removed").order_by(
-        Claim.ordinal).all()
+    claims = (
+        db.query(Claim)
+        .filter(Claim.analysis_id == analysis.id, Claim.status != "removed")
+        .order_by(Claim.ordinal)
+        .all()
+    )
     charts = db.query(Chart).filter(Chart.analysis_id == analysis.id).all()
     answer = analysis.answer or {}
     facts = [c for c in claims if c.kind == "fact" and c.section != "summary"]
@@ -120,18 +138,36 @@ def report_content(db: Session, analysis: Analysis) -> dict[str, Any]:
         "dataset": {
             "name": source.name if source else "",
             "kind": source.kind if source else "",
-            "tables": [{"name": t.name, "display": t.display_name, "rows": t.row_count, "columns": t.column_count,
-                        "warnings": (t.profile or {}).get("warnings", [])} for t in tables],
+            "tables": [
+                {
+                    "name": t.name,
+                    "display": t.display_name,
+                    "rows": t.row_count,
+                    "columns": t.column_count,
+                    "warnings": (t.profile or {}).get("warnings", []),
+                }
+                for t in tables
+            ],
         },
         "summary": [c for c in claims if c.section == "summary"],
         "sections": sections,
         "interpretations": [c for c in claims if c.kind == "interpretation"],
         "recommendations": [c for c in claims if c.kind == "recommendation"],
-        "caveats": answer.get("caveats", []) + [f"Assumption: {a}" for a in answer.get("assumptions", [])]
-                   + [f"Step not completed: {f}" for f in answer.get("failed_steps", [])],
+        "caveats": answer.get("caveats", [])
+        + [f"Assumption: {a}" for a in answer.get("assumptions", [])]
+        + [f"Step not completed: {f}" for f in answer.get("failed_steps", [])],
         "follow_ups": answer.get("follow_up_questions", []),
-        "charts": [{"title": c.title, "type": c.chart_type, "png": _chart_png(c), "interpretation": c.interpretation,
-                    "verified": c.verified, "source": (c.spec or {}).get("source", {})} for c in charts],
+        "charts": [
+            {
+                "title": c.title,
+                "type": c.chart_type,
+                "png": _chart_png(c),
+                "interpretation": c.interpretation,
+                "verified": c.verified,
+                "source": (c.spec or {}).get("source", {}),
+            }
+            for c in charts
+        ],
         "evidence": evidence_rows,
         "verification": answer.get("verification", {}),
         "model": analysis.model,
@@ -149,9 +185,16 @@ def _evidence_row(db: Session, claim: Claim, evidence: Evidence) -> dict[str, An
         record = db.query(SQLExecution).filter(SQLExecution.tool_execution_id == evidence.tool_execution_id).first()
         sql = record.sql_executed if record else None
     tool = db.get(ToolExecution, evidence.tool_execution_id) if evidence.tool_execution_id else None
-    return {"claim": claim.text, "finding": finding.label if finding else "", "statement": evidence.description,
-            "formula": evidence.formula, "source_type": evidence.source_type, "sql": sql,
-            "tool": tool.tool if tool else None, "execution_id": evidence.tool_execution_id}
+    return {
+        "claim": claim.text,
+        "finding": finding.label if finding else "",
+        "statement": evidence.description,
+        "formula": evidence.formula,
+        "source_type": evidence.source_type,
+        "sql": sql,
+        "tool": tool.tool if tool else None,
+        "execution_id": evidence.tool_execution_id,
+    }
 
 
 def render_html(content: dict[str, Any]) -> str:
@@ -163,18 +206,22 @@ def build_report(db: Session, analysis: Analysis, title: str | None = None) -> R
     if title:
         content["title"] = title[:200]
     html = render_html(content)
-    serialisable = {**content, "summary": [c.text for c in content["summary"]],
-                    "sections": {k: [c.text for c in v] for k, v in content["sections"].items()},
-                    "interpretations": [c.text for c in content["interpretations"]],
-                    "recommendations": [c.text for c in content["recommendations"]],
-                    "charts": [{k: v for k, v in c.items() if k != "png"} for c in content["charts"]]}
+    serialisable = {
+        **content,
+        "summary": [c.text for c in content["summary"]],
+        "sections": {k: [c.text for c in v] for k, v in content["sections"].items()},
+        "interpretations": [c.text for c in content["interpretations"]],
+        "recommendations": [c.text for c in content["recommendations"]],
+        "charts": [{k: v for k, v in c.items() if k != "png"} for c in content["charts"]],
+    }
     existing = db.query(Report).filter(Report.analysis_id == analysis.id).first()
     if existing:
         existing.title, existing.content, existing.html = content["title"], serialisable, html
         db.flush()
         return existing
-    report = Report(analysis_id=analysis.id, user_id=analysis.user_id, title=content["title"], content=serialisable,
-                    html=html)
+    report = Report(
+        analysis_id=analysis.id, user_id=analysis.user_id, title=content["title"], content=serialisable, html=html
+    )
     db.add(report)
     db.flush()
     return report
@@ -184,8 +231,10 @@ def render_pdf(html: str) -> bytes:
     try:
         from weasyprint import HTML
     except Exception as exc:  # pragma: no cover - depends on system libraries
-        raise RuntimeError("PDF export needs WeasyPrint and its system libraries (available in the Docker image)") from exc
-    return HTML(string=html).write_pdf()  # type: ignore[no-any-return]
+        raise RuntimeError(
+            "PDF export needs WeasyPrint and its system libraries (available in the Docker image)"
+        ) from exc
+    return bytes(HTML(string=html).write_pdf())
 
 
 def result_csv(table: ResultTable) -> str:

@@ -40,19 +40,32 @@ class SQLRun:
 
 
 def run_sql(
-    db: Session | None, engine: QueryEngine, catalog: Catalog, sql: str, *, analysis_id: str | None = None,
-    tool_execution_id: str | None = None, max_rows: int | None = None, row_cap: int | None = None,
+    db: Session | None,
+    engine: QueryEngine,
+    catalog: Catalog,
+    sql: str,
+    *,
+    analysis_id: str | None = None,
+    tool_execution_id: str | None = None,
+    max_rows: int | None = None,
+    row_cap: int | None = None,
 ) -> SQLRun:
     settings = get_settings()
     limits = SQLLimits(
         # row_cap lets deterministic tools (which aggregate full columns) exceed the interactive cap.
         max_rows=min(max_rows or settings.sql_max_rows, row_cap or settings.sql_max_rows),
-        max_joins=settings.sql_max_joins, max_subquery_depth=settings.sql_max_subquery_depth,
+        max_joins=settings.sql_max_joins,
+        max_subquery_depth=settings.sql_max_subquery_depth,
     )
     validation = validate_sql(sql, engine.dialect, catalog, limits)
     record = SQLExecution(
-        analysis_id=analysis_id, tool_execution_id=tool_execution_id, dialect=engine.dialect, sql_original=sql,
-        sql_executed=validation.safe_sql, validation=validation.to_dict(), status="blocked",
+        analysis_id=analysis_id,
+        tool_execution_id=tool_execution_id,
+        dialect=engine.dialect,
+        sql_original=sql,
+        sql_executed=validation.safe_sql,
+        validation=validation.to_dict(),
+        status="blocked",
     )
     run: SQLRun
     if not validation.ok:
@@ -64,8 +77,9 @@ def run_sql(
     else:
         assert validation.safe_sql is not None
         try:
-            result = engine.execute(validation.safe_sql, max_rows=limits.max_rows,
-                                    timeout_seconds=settings.sql_timeout_seconds)
+            result = engine.execute(
+                validation.safe_sql, max_rows=limits.max_rows, timeout_seconds=settings.sql_timeout_seconds
+            )
             record.status, record.row_count, record.truncated = "success", result.row_count, result.truncated
             record.duration_ms = result.duration_ms
             QUERY_DURATION.labels(dialect=engine.dialect, status="success").observe(result.duration_ms / 1000)

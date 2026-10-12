@@ -18,7 +18,7 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import sqlglot
 from sqlglot import exp
@@ -28,25 +28,116 @@ from sqlglot.optimizer.qualify import qualify
 ALLOWED_ROOTS: tuple[type[exp.Expression], ...] = (exp.Select, exp.Union, exp.Intersect, exp.Except)
 
 _FORBIDDEN_NODE_NAMES = (
-    "Insert", "Update", "Delete", "Merge", "Create", "Drop", "Alter", "AlterTable", "TruncateTable", "Command",
-    "Copy", "Grant", "Revoke", "Into", "Lock", "Pragma", "Set", "SetItem", "Attach", "Detach", "Install", "Load",
-    "Use", "Transaction", "Commit", "Rollback", "Describe", "Show", "Analyze", "Kill", "Summarize", "Export",
-    "LoadData", "Refresh", "Cache", "Uncache", "Comment", "Execute", "ExecuteSql",
+    "Insert",
+    "Update",
+    "Delete",
+    "Merge",
+    "Create",
+    "Drop",
+    "Alter",
+    "AlterTable",
+    "TruncateTable",
+    "Command",
+    "Copy",
+    "Grant",
+    "Revoke",
+    "Into",
+    "Lock",
+    "Pragma",
+    "Set",
+    "SetItem",
+    "Attach",
+    "Detach",
+    "Install",
+    "Load",
+    "Use",
+    "Transaction",
+    "Commit",
+    "Rollback",
+    "Describe",
+    "Show",
+    "Analyze",
+    "Kill",
+    "Summarize",
+    "Export",
+    "LoadData",
+    "Refresh",
+    "Cache",
+    "Uncache",
+    "Comment",
+    "Execute",
+    "ExecuteSql",
 )
 FORBIDDEN_NODES: tuple[type[exp.Expression], ...] = tuple(
     getattr(exp, name) for name in _FORBIDDEN_NODE_NAMES if hasattr(exp, name)
 )
 
 FORBIDDEN_FUNCTIONS = {
-    "pg_sleep", "sleep", "benchmark", "pg_read_file", "pg_read_binary_file", "pg_ls_dir", "pg_stat_file",
-    "lo_import", "lo_export", "lo_get", "lo_put", "dblink", "dblink_exec", "dblink_connect", "load_file",
-    "getenv", "current_setting", "set_config", "pg_terminate_backend", "pg_cancel_backend", "pg_reload_conf",
-    "pg_rotate_logfile", "query", "query_table", "glob", "sniff_csv", "system", "shell", "sys_exec", "sys_eval",
-    "xp_cmdshell", "http_get", "http_post", "pg_advisory_lock", "pg_notify", "txid_current", "nextval", "setval",
-    "make_table", "load_extension", "writefile", "readfile", "edit", "fts5", "pg_logical_emit_message",
+    "pg_sleep",
+    "sleep",
+    "benchmark",
+    "pg_read_file",
+    "pg_read_binary_file",
+    "pg_ls_dir",
+    "pg_stat_file",
+    "lo_import",
+    "lo_export",
+    "lo_get",
+    "lo_put",
+    "dblink",
+    "dblink_exec",
+    "dblink_connect",
+    "load_file",
+    "getenv",
+    "current_setting",
+    "set_config",
+    "pg_terminate_backend",
+    "pg_cancel_backend",
+    "pg_reload_conf",
+    "pg_rotate_logfile",
+    "query",
+    "query_table",
+    "glob",
+    "sniff_csv",
+    "system",
+    "shell",
+    "sys_exec",
+    "sys_eval",
+    "xp_cmdshell",
+    "http_get",
+    "http_post",
+    "pg_advisory_lock",
+    "pg_notify",
+    "txid_current",
+    "nextval",
+    "setval",
+    "make_table",
+    "load_extension",
+    "writefile",
+    "readfile",
+    "edit",
+    "fts5",
+    "pg_logical_emit_message",
 }
-FORBIDDEN_PREFIXES = ("read_", "pg_read", "pg_ls", "pg_stat", "lo_", "dblink", "duckdb_", "pragma_", "http",
-                      "sys_", "parquet_", "iceberg_", "delta_", "sqlite_", "mysql_", "postgres_", "pg_file")
+FORBIDDEN_PREFIXES = (
+    "read_",
+    "pg_read",
+    "pg_ls",
+    "pg_stat",
+    "lo_",
+    "dblink",
+    "duckdb_",
+    "pragma_",
+    "http",
+    "sys_",
+    "parquet_",
+    "iceberg_",
+    "delta_",
+    "sqlite_",
+    "mysql_",
+    "postgres_",
+    "pg_file",
+)
 AGGREGATE_SAFE_FOR_PII = (exp.Count, exp.ApproxDistinct)
 
 
@@ -66,7 +157,7 @@ class Catalog:
     allowed_tables: set[str] | None = None
     restricted_columns: set[tuple[str, str]] = field(default_factory=set)  # (table, column)
 
-    def schema_mapping(self) -> dict[str, dict[str, str]]:
+    def schema_mapping(self) -> dict[str, object]:
         return {t: {c: (ty or "TEXT") for c, ty in cols.items()} for t, cols in self.tables.items()}
 
 
@@ -88,8 +179,13 @@ class ValidationResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "ok": self.ok, "statement_type": self.statement_type, "tables": self.tables, "columns": self.columns,
-            "errors": self.errors, "warnings": self.warnings, "applied_limit": self.applied_limit,
+            "ok": self.ok,
+            "statement_type": self.statement_type,
+            "tables": self.tables,
+            "columns": self.columns,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "applied_limit": self.applied_limit,
         }
 
 
@@ -108,7 +204,7 @@ def _function_name(node: exp.Func) -> str:
         return node.__class__.__name__.lower()
 
 
-def _subquery_depth(node: exp.Expression) -> int:
+def _subquery_depth(node: exp.Expr) -> int:
     depth = 0
     parent = node.parent
     while parent is not None:
@@ -145,15 +241,15 @@ def validate_sql(sql: str, dialect: str, catalog: Catalog, limits: SQLLimits | N
     result.statement_type = tree.key.upper()
 
     if not isinstance(tree, ALLOWED_ROOTS):
-        return _fail(result, "statement_type",
-                     f"Only read-only SELECT queries are allowed ({tree.key.upper()} is blocked)")
+        return _fail(
+            result, "statement_type", f"Only read-only SELECT queries are allowed ({tree.key.upper()} is blocked)"
+        )
 
     node_count = 0
     for node in tree.walk():
         node_count += 1
         if isinstance(node, FORBIDDEN_NODES):
-            return _fail(result, "forbidden_operation",
-                         f"Forbidden operation inside the query: {node.key.upper()}")
+            return _fail(result, "forbidden_operation", f"Forbidden operation inside the query: {node.key.upper()}")
         if isinstance(node, exp.Func):
             fname = _function_name(node)
             if fname in FORBIDDEN_FUNCTIONS or fname.startswith(FORBIDDEN_PREFIXES):
@@ -174,8 +270,14 @@ def validate_sql(sql: str, dialect: str, catalog: Catalog, limits: SQLLimits | N
         if name not in catalog.tables:
             options = suggest(name, list(catalog.tables))
             hint = f" Did you mean: {', '.join(options)}?" if options else ""
-            return _fail(result, "unknown_table", f"Unknown table '{table.name}'.{hint}",
-                         table=table.name, suggestions=options, available=sorted(catalog.tables))
+            return _fail(
+                result,
+                "unknown_table",
+                f"Unknown table '{table.name}'.{hint}",
+                table=table.name,
+                suggestions=options,
+                available=sorted(catalog.tables),
+            )
         if catalog.allowed_tables is not None and name not in catalog.allowed_tables:
             return _fail(result, "table_not_allowed", f"Table '{table.name}' is not on this connection's allowlist")
         referenced.append(name)
@@ -185,8 +287,12 @@ def validate_sql(sql: str, dialect: str, catalog: Catalog, limits: SQLLimits | N
     if len(joins) > limits.max_joins:
         return _fail(result, "too_complex", f"Too many joins ({len(joins)} > {limits.max_joins})")
     for join in joins:
-        if not join.args.get("on") and not join.args.get("using") and (join.kind or "").upper() != "CROSS" \
-                and not isinstance(join.this, exp.Unnest | exp.Lateral):
+        if (
+            not join.args.get("on")
+            and not join.args.get("using")
+            and (join.kind or "").upper() != "CROSS"
+            and not isinstance(join.this, exp.Unnest | exp.Lateral)
+        ):
             result.warnings.append("A join without an ON/USING condition produces a cartesian product")
     for sub in tree.find_all(exp.Subquery, exp.CTE):
         if _subquery_depth(sub) + 1 > limits.max_subquery_depth:
@@ -196,8 +302,12 @@ def validate_sql(sql: str, dialect: str, catalog: Catalog, limits: SQLLimits | N
     qualified_ok = True
     try:
         qualified = qualify(
-            tree.copy(), schema=catalog.schema_mapping(), dialect=dialect, validate_qualify_columns=True,
-            quote_identifiers=False, identify=False,
+            tree.copy(),
+            schema=catalog.schema_mapping(),
+            dialect=dialect,
+            validate_qualify_columns=True,
+            quote_identifiers=False,
+            identify=False,
         )
     except OptimizeError as exc:
         message = str(exc)
@@ -207,8 +317,14 @@ def validate_sql(sql: str, dialect: str, catalog: Catalog, limits: SQLLimits | N
             candidates = sorted({c for t in (result.tables or catalog.tables) for c in catalog.tables.get(t, {})})
             options = suggest(missing, candidates)
             hint = f" Did you mean: {', '.join(options)}?" if options else ""
-            return _fail(result, "unknown_column", f"Unknown column '{missing}'.{hint}", column=missing,
-                         suggestions=options, available=candidates[:60])
+            return _fail(
+                result,
+                "unknown_column",
+                f"Unknown column '{missing}'.{hint}",
+                column=missing,
+                suggestions=options,
+                available=candidates[:60],
+            )
         result.warnings.append(f"Column resolution was partial: {message[:160]}")
         qualified, qualified_ok = tree, False
     except Exception as exc:  # pragma: no cover - defensive: optimizer edge cases on exotic syntax
@@ -224,16 +340,20 @@ def validate_sql(sql: str, dialect: str, catalog: Catalog, limits: SQLLimits | N
     if catalog.restricted_columns:
         violation = _restricted_violation(qualified, tree, catalog, stars_expanded=qualified_ok)
         if violation:
-            return _fail(result, "restricted_column",
-                         f"Column '{violation}' is marked sensitive (PII); it can only be counted, not returned")
+            return _fail(
+                result,
+                "restricted_column",
+                f"Column '{violation}' is marked sensitive (PII); it can only be counted, not returned",
+            )
 
     safe_tree = _enforce_limit(tree, limits.max_rows, result)
     result.safe_sql = safe_tree.sql(dialect=dialect)
     return result
 
 
-def _restricted_violation(qualified: exp.Expression, original: exp.Expression, catalog: Catalog, *,
-                          stars_expanded: bool) -> str | None:
+def _restricted_violation(
+    qualified: exp.Expression, original: exp.Expression, catalog: Catalog, *, stars_expanded: bool
+) -> str | None:
     restricted_names = {c for _, c in catalog.restricted_columns}
     alias_to_table: dict[str, str] = {}
     for table in qualified.find_all(exp.Table):
@@ -242,8 +362,8 @@ def _restricted_violation(qualified: exp.Expression, original: exp.Expression, c
         name = column.name.lower()
         if name not in restricted_names:
             continue
-        table = alias_to_table.get(column.table.lower(), column.table.lower()) if column.table else ""
-        if table and (table, name) not in catalog.restricted_columns:
+        owner = alias_to_table.get(column.table.lower(), column.table.lower()) if column.table else ""
+        if owner and (owner, name) not in catalog.restricted_columns:
             continue
         inside_count = column.find_ancestor(*AGGREGATE_SAFE_FOR_PII) is not None
         if not inside_count:
@@ -252,8 +372,8 @@ def _restricted_violation(qualified: exp.Expression, original: exp.Expression, c
     # a star over a table with restricted columns could return them.
     if not stars_expanded and any(isinstance(s, exp.Star) for s in original.find_all(exp.Star)):
         star_tables = {t.name.lower() for t in original.find_all(exp.Table)}
-        for table, column_name in catalog.restricted_columns:
-            if table in star_tables:
+        for owner_name, column_name in catalog.restricted_columns:
+            if owner_name in star_tables:
                 parent_selects = [s for s in original.find_all(exp.Star) if s.find_ancestor(exp.Count) is None]
                 if parent_selects:
                     return column_name
@@ -270,7 +390,7 @@ def _enforce_limit(tree: exp.Expression, max_rows: int, result: ValidationResult
             tree = tree.limit(fetch_cap)
             result.applied_limit = max_rows
         return tree
-    wrapped = exp.select("*").from_(tree.subquery("_q")).limit(fetch_cap)
+    wrapped = exp.select("*").from_(cast(exp.Query, tree).subquery("_q")).limit(fetch_cap)
     result.applied_limit = max_rows
     return wrapped
 

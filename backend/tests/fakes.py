@@ -26,17 +26,27 @@ class ScriptedLLM(LLMProvider):
             self.scripts[purpose].extend(items)
         self.calls: list[tuple[str, list[dict[str, Any]]]] = []
 
-    def complete(self, messages: list[dict[str, Any]], *, purpose: str, json_mode: bool = False,
-                 temperature: float | None = None, max_tokens: int | None = None) -> LLMResponse:
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        purpose: str,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResponse:
         self.calls.append((purpose, messages))
         base = purpose.removesuffix("_repair")
         queue = self.scripts.get(base)
         if not queue:
-            default = {"revise": {"complete": True, "reason": "done", "additional_steps": []},
-                       "rewrite": {"items": []}}.get(base)
+            default = {
+                "revise": {"complete": True, "reason": "done", "additional_steps": []},
+                "rewrite": {"items": []},
+            }.get(base)
             if default is None:
-                raise AssertionError(f"No scripted response left for purpose '{purpose}': "
-                                     f"{messages[-1]['content'][-600:]}")
+                raise AssertionError(
+                    f"No scripted response left for purpose '{purpose}': {messages[-1]['content'][-600:]}"
+                )
             item: Any = default
         else:
             item = queue.popleft()

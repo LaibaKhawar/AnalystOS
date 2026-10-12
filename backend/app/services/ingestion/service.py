@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import BinaryIO
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import IngestionError
 from app.core.logging import get_logger
-from app.db.models import ColumnMetadata, DataSource, Dataset, DatasetVersion, TableMetadata
+from app.db.models import ColumnMetadata, Dataset, DatasetVersion, DataSource, TableMetadata
 from app.services.ingestion.coercion import coerce_text_columns, reorder_columns
 from app.services.ingestion.csv_reader import load_csv
 from app.services.ingestion.excel_reader import load_excel
@@ -41,7 +42,7 @@ def save_upload(stream: BinaryIO, filename: str) -> tuple[Path, int, str]:
     limit = settings.max_upload_mb * 1024 * 1024
     digest = hashlib.sha256()
     safe_name = to_identifier(Path(filename).stem, fallback="upload") + Path(filename).suffix.lower()
-    target_dir = settings.uploads_dir / hashlib.sha1(f"{filename}{id(stream)}".encode()).hexdigest()[:12]  # noqa: S324
+    target_dir = settings.uploads_dir / uuid.uuid4().hex  # unique per upload; never derived from user input
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / safe_name
     size = 0
@@ -100,8 +101,13 @@ def build_dataset_files(
         con.close()
     report: dict[str, object] = {
         "tables": [
-            {"name": t.name, "display_name": t.display_name, "rows": t.row_count, "warnings": t.warnings,
-             "details": t.details}
+            {
+                "name": t.name,
+                "display_name": t.display_name,
+                "rows": t.row_count,
+                "warnings": t.warnings,
+                "details": t.details,
+            }
             for t in tables
         ]
     }
@@ -109,7 +115,12 @@ def build_dataset_files(
 
 
 def ingest_upload(
-    db: Session, *, user_id: str, stream: BinaryIO, filename: str, name: str | None = None,
+    db: Session,
+    *,
+    user_id: str,
+    stream: BinaryIO,
+    filename: str,
+    name: str | None = None,
     sheets: list[str] | None = None,
 ) -> Dataset:
     file_type = detect_file_type(filename)
@@ -120,8 +131,12 @@ def ingest_upload(
     db.add(source)
     db.flush()
     dataset = Dataset(
-        user_id=user_id, data_source_id=source.id, name=display, original_filename=filename[:400],
-        file_type=file_type, size_bytes=size,
+        user_id=user_id,
+        data_source_id=source.id,
+        name=display,
+        original_filename=filename[:400],
+        file_type=file_type,
+        size_bytes=size,
     )
     db.add(dataset)
     db.flush()
@@ -142,8 +157,12 @@ def ingest_upload(
         shutil.rmtree(upload_path.parent, ignore_errors=True)
 
     version = DatasetVersion(
-        dataset_id=dataset.id, version=1, storage_path=str(out_dir / "data.duckdb"),
-        parquet_dir=str(out_dir / "parquet"), sha256=sha, ingestion_report=report,
+        dataset_id=dataset.id,
+        version=1,
+        storage_path=str(out_dir / "data.duckdb"),
+        parquet_dir=str(out_dir / "parquet"),
+        sha256=sha,
+        ingestion_report=report,
     )
     db.add(version)
     db.flush()
@@ -157,7 +176,10 @@ def ingest_upload(
 
 
 def persist_tables(
-    db: Session, source: DataSource, tables: list[LoadedTable], profiles: list[TableProfile],
+    db: Session,
+    source: DataSource,
+    tables: list[LoadedTable],
+    profiles: list[TableProfile],
     version_id: str | None,
 ) -> list[TableMetadata]:
     created: list[TableMetadata] = []
@@ -165,9 +187,14 @@ def persist_tables(
         semantic = interpret_table(profile)
         profile.table["warnings"] = loaded.warnings + profile.table["warnings"]
         table = TableMetadata(
-            data_source_id=source.id, dataset_version_id=version_id, name=loaded.name,
-            display_name=loaded.display_name, row_count=profile.row_count, column_count=len(profile.columns),
-            profile=profile.table, semantic={k: v for k, v in semantic.items() if k != "columns"},
+            data_source_id=source.id,
+            dataset_version_id=version_id,
+            name=loaded.name,
+            display_name=loaded.display_name,
+            row_count=profile.row_count,
+            column_count=len(profile.columns),
+            profile=profile.table,
+            semantic={k: v for k, v in semantic.items() if k != "columns"},
         )
         sem_by_col = {c["column"]: c for c in semantic["columns"]}
         original = dict(zip(loaded.columns, loaded.original_columns, strict=False))
@@ -175,12 +202,21 @@ def persist_tables(
             sem = sem_by_col[column.name]
             table.columns.append(
                 ColumnMetadata(
-                    name=column.name, original_name=original.get(column.name, column.name), ordinal=ordinal,
-                    physical_type=column.physical_type, inferred_type=column.inferred_type, role=column.role,
-                    semantic_type=sem["semantic_type"], semantic_confidence=sem["confidence"],
-                    is_pii=sem["is_pii"], stats={**column.stats, "flags": column.flags,
-                                                 "concept": sem["concept"],
-                                                 "semantic_alternatives": sem["alternatives"]},
+                    name=column.name,
+                    original_name=original.get(column.name, column.name),
+                    ordinal=ordinal,
+                    physical_type=column.physical_type,
+                    inferred_type=column.inferred_type,
+                    role=column.role,
+                    semantic_type=sem["semantic_type"],
+                    semantic_confidence=sem["confidence"],
+                    is_pii=sem["is_pii"],
+                    stats={
+                        **column.stats,
+                        "flags": column.flags,
+                        "concept": sem["concept"],
+                        "semantic_alternatives": sem["alternatives"],
+                    },
                 )
             )
         db.add(table)

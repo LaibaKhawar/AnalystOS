@@ -1,0 +1,86 @@
+# One command local stack:  cp .env.example .env  (fill SECRET_KEY / ENCRYPTION_KEY)  &&  docker compose up --build
+# App: http://localhost:3000   API docs: http://localhost:8000/docs
+name: analystos
+
+x-backend-env: &backend-env
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-analystos}:${POSTGRES_PASSWORD:-analystos}@postgres:5432/${POSTGRES_DB:-analystos}
+    REDIS_URL: redis://redis:6379/0
+    DATA_DIR: /data
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-analystos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-analystos}
+      POSTGRES_DB: ${POSTGRES_DB:-analystos}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  # Builds the image that runs model-generated Python. The worker starts throwaway containers from it;
+  # this service only builds the image and exits immediately.
+  sandbox:
+    build: ./sandbox
+    image: analystos-sandbox:latest
+    entrypoint: ["python", "-c", "print('sandbox image ready')"]
+    network_mode: none
+    restart: "no"
+
+  migrate:
+    build: ./backend
+    image: analystos-backend:latest
+    <<: *backend-env
+    command: ["sh", "-c", "alembic upgrade head && python scripts/seed_demo.py"]
+    volumes: [appdata:/data]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  backend:
+    image: analystos-backend:latest
+    <<: *backend-env
+    ports: ["8000:8000"]
+    volumes: [appdata:/data]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 10s
+      retries: 10
+
+  worker:
+    image: analystos-backend:latest
+    <<: *backend-env
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    user: root  # needs the Docker socket to start sandbox containers; generated code never runs here
+    volumes:
+      - appdata:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      sandbox: {condition: service_completed_successfully}
+
+  frontend:
+    build: ./frontend
+    ports: ["3000:80"]
+    depends_on:
+      backend: {condition: service_healthy}
+
+volumes:
+  pgdata:
+  appdata:

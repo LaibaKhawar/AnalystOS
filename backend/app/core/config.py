@@ -93,9 +93,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_secrets(self) -> Settings:
-        if self.environment == "production":
-            if self.secret_key.lower() in _INSECURE_SECRETS or len(self.secret_key) < 32:
-                raise ValueError("SECRET_KEY must be a random value of at least 32 characters in production")
+        if self.environment == "production" and (
+            self.secret_key.lower() in _INSECURE_SECRETS or len(self.secret_key) < 32
+        ):
+            raise ValueError("SECRET_KEY must be a random value of at least 32 characters in production")
         if len(self.secret_key) < 16:
             raise ValueError("SECRET_KEY must be at least 16 characters")
         try:
@@ -129,6 +130,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()  # values come from the environment
     settings.ensure_dirs()
     return settings
