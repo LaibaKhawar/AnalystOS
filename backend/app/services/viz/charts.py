@@ -131,6 +131,9 @@ def build_chart(
         if coerced.notna().sum() == 0:
             raise ChartSpecError(f"y column '{column}' is not numeric")
         frame[column] = coerced
+    if series and (series == x or series in y):
+        series = None  # splitting by the x axis (or a value column) adds nothing; models sometimes ask for it
+        spec["series"] = None
     if series:
         if len(y) != 1:
             raise ChartSpecError("With 'series', pass exactly one y column")

@@ -38,6 +38,15 @@ def test_histogram_and_box_are_computed_from_values() -> None:
     assert box[0]["q1"] <= box[0]["median"] <= box[0]["q3"]
 
 
+def test_series_equal_to_x_is_ignored_instead_of_crashing() -> None:
+    columns = [{"name": "region", "type": "str"}, {"name": "revenue", "type": "float"}]
+    spec, data = build_chart(
+        "bar", columns, [["North", 10.0], ["South", 5.0]], x="region", y=["revenue"], series="region", title="t"
+    )
+    assert spec["series"] is None and spec["y"] == ["revenue"]
+    assert [d["region"] for d in data] == ["North", "South"]
+
+
 def test_recommend_type() -> None:
     assert recommend_type(COLUMNS, ROWS)[0] == "bar"
     ts = [{"name": "period", "type": "DATE"}, {"name": "revenue", "type": "DOUBLE"}]
