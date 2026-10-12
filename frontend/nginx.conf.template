@@ -6,10 +6,11 @@ server {
 
   client_max_body_size 210m;
 
-  # Resolve the backend at request time through Docker's DNS, so nginx starts even
-  # when the backend container is not up yet.
-  resolver 127.0.0.11 valid=30s ipv6=off;
-  set $backend http://backend:8000;
+  # Resolve the backend at request time, so nginx starts even when the backend is not up yet.
+  # BACKEND_URL defaults to the Compose service; NGINX_RESOLVER comes from /etc/resolv.conf
+  # (Docker's 127.0.0.11 under Compose). See 15-resolver.envsh.
+  resolver ${NGINX_RESOLVER} valid=30s ipv6=off;
+  set $backend ${BACKEND_URL};
 
   gzip on;
   gzip_types text/plain text/css application/javascript application/json image/svg+xml;
@@ -26,7 +27,9 @@ server {
   location /api/ {
     proxy_pass $backend;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $proxy_host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_ssl_server_name on;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;

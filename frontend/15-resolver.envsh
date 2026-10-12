@@ -1,0 +1,8 @@
+#!/bin/sh
+# Sourced by the nginx entrypoint before templates are rendered: use the container's own DNS server
+# unless NGINX_RESOLVER is set explicitly.
+if [ -z "${NGINX_RESOLVER:-}" ]; then
+  NGINX_RESOLVER=$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf)
+  case "$NGINX_RESOLVER" in *:*) NGINX_RESOLVER="[$NGINX_RESOLVER]" ;; esac
+fi
+export NGINX_RESOLVER="${NGINX_RESOLVER:-127.0.0.11}"

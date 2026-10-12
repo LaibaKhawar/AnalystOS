@@ -1,6 +1,8 @@
 """Create the demo account and load the sample datasets (idempotent).
 
-Usage: python scripts/seed_demo.py [--email demo@analystos.dev] [--password analystos-demo-2026]
+Usage: python scripts/seed_demo.py [--email demo@analystos.dev] [--password analystos-demo-2026] [--role admin]
+
+Use --role analyst on a public demo: the password is published, and admins can see every source and change roles.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--email", default="demo@analystos.dev")
     parser.add_argument("--password", default="analystos-demo-2026")
+    parser.add_argument("--role", choices=["admin", "analyst", "viewer"], default="admin")
     args = parser.parse_args()
     db = get_session_factory()()
     user = db.query(User).filter(User.email == args.email).first()
@@ -34,8 +37,8 @@ def main() -> None:
             email=args.email,
             name="Demo Analyst",
             password_hash=hash_password(args.password),
-            is_admin=True,
-            role="admin",
+            is_admin=args.role == "admin",
+            role=args.role,
         )
         db.add(user)
         db.commit()

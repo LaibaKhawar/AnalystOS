@@ -3,3 +3,6 @@
 284d3e42a16fbd5cd81f8152c5363509d78b3a98:.github/workflows/ci.yml:generic-api-key:49
 284d3e42a16fbd5cd81f8152c5363509d78b3a98:.github/workflows/ci.yml:generic-api-key:50
 605f717b3acf223b953c540f7113afcbd842d20f:backend/tests/e2e_server.py:generic-api-key:24
+# Metric names (latency rows) in the evaluation comparison table, not credentials
+2162ed2270b6273f4255b863f5ef93ef4375e739:frontend/src/lib/compare.ts:generic-api-key:21
+2162ed2270b6273f4255b863f5ef93ef4375e739:frontend/src/lib/compare.ts:generic-api-key:22

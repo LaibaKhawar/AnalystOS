@@ -106,6 +106,16 @@ class Settings(BaseSettings):
     def _blank_is_none(cls, value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _psycopg_driver(cls, value: object) -> object:
+        # Hosted Postgres (Render, Fly, Heroku) hands out postgres:// URLs; SQLAlchemy needs the driver named.
+        if isinstance(value, str):
+            for prefix in ("postgres://", "postgresql://"):
+                if value.startswith(prefix):
+                    return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:

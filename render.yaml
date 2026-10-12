@@ -1,0 +1,77 @@
+# Render Blueprint: a public demo of AnalystOS (New > Blueprint, pick this repo).
+#
+# Free-tier friendly layout: analyses run inside the API process (no Celery worker), generated Python runs in
+# Modal sandboxes (Render has no Docker socket), and the LLM is any OpenAI-compatible endpoint.
+# Fill the `sync: false` values in the Render dashboard on first deploy. See docs/deployment.md.
+#
+# Limits of the free plan: the API sleeps when idle (first request takes ~1 minute), and its disk is ephemeral,
+# so datasets uploaded by visitors disappear on restart (the demo datasets are re-seeded at every start).
+# Schedules need the `beat` and `worker` services, which are paid background workers; they are left out here.
+
+databases:
+  - name: analystos-db
+    databaseName: analystos
+    user: analystos
+    plan: free
+
+services:
+  - type: keyvalue
+    name: analystos-redis
+    plan: free
+    ipAllowList: []  # private network only
+
+  - type: web
+    name: analystos-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: >-
+      sh -c "alembic upgrade head
+      && python scripts/seed_demo.py --role analyst
+      && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: INSTALL_MODAL  # build arg
+        value: "true"
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: {name: analystos-db, property: connectionString}
+      - key: REDIS_URL
+        fromService: {type: keyvalue, name: analystos-redis, property: connectionString}
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY  # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+        sync: false
+      - key: RUN_ANALYSES_INLINE
+        value: "true"
+      - key: SANDBOX_BACKEND
+        value: modal
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+      - key: LLM_BASE_URL  # e.g. https://api.openai.com/v1, or the Modal GPU endpoint from deploy/modal/llm_server.py
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: QUESTIONS_PER_HOUR  # per user; keeps a public demo's LLM bill bounded
+        value: "20"
+      - key: LOG_JSON
+        value: "true"
+
+  - type: web
+    name: analystos-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    healthCheckPath: /healthz
+    envVars:
+      - key: BACKEND_URL  # public URL of analystos-api, e.g. https://analystos-api.onrender.com
+        sync: false

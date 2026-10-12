@@ -48,7 +48,32 @@ port 9100.
 Platform hosts do not give containers a Docker daemon, so set `SANDBOX_BACKEND=modal` (with `MODAL_TOKEN_ID` and
 `MODAL_TOKEN_SECRET`) to run generated Python in Modal sandboxes, and point `LLM_BASE_URL` at a hosted model or the
 Modal GPU deployment (`deploy/modal/llm_server.py`). For a single-service demo, `RUN_ANALYSES_INLINE=true` runs
-analyses in the API process instead of a separate worker.
+analyses in the API process instead of a separate worker. Build the backend image with
+`--build-arg INSTALL_MODAL=true` so the Modal client is included.
+
+### Render (blueprint)
+
+[`render.yaml`](../render.yaml) describes a free-tier demo: Postgres, Key Value (Redis), the API (migrations and the
+demo seed run at start, analyses inline, Modal sandboxes) and the frontend. In Render: **New > Blueprint**, pick the
+repository, then fill the values marked `sync: false`:
+
+| Service | Variable | Value |
+|---|---|---|
+| analystos-api | `ENCRYPTION_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| analystos-api | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | from `modal token new` (or `~/.modal.toml`) |
+| analystos-api | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | any OpenAI-compatible endpoint |
+| analystos-web | `BACKEND_URL` | the API's public URL, e.g. `https://analystos-api.onrender.com` |
+
+The demo account is seeded with the `analyst` role (its password is public, so it must not be an admin).
+`QUESTIONS_PER_HOUR=20` bounds the LLM bill per account. Free-plan limits: the API sleeps when idle, its disk is
+ephemeral (visitor uploads vanish on restart; the demo datasets are re-seeded), and schedules need the paid `worker`
+and `beat` background services (same image, commands as in `docker-compose.yml`).
+
+### Frontend behind any backend
+
+The frontend image renders its nginx config from a template at start: `BACKEND_URL` (default
+`http://backend:8000`, the Compose service) is where `/api` is proxied, over HTTP or HTTPS, and the DNS resolver is
+read from the container's `/etc/resolv.conf` (override with `NGINX_RESOLVER`).
 
 ## Production checklist
 

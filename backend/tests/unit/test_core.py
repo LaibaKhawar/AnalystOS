@@ -83,3 +83,20 @@ def test_blank_optional_settings_are_none(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("EMBEDDING_BASE_URL", "")
     settings = Settings()  # type: ignore[call-arg]
     assert settings.pricing_file is None and settings.embedding_base_url is None
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ("postgres://u:p@db:5432/x", "postgresql+psycopg://u:p@db:5432/x"),
+        ("postgresql://u:p@db/x", "postgresql+psycopg://u:p@db/x"),
+        ("postgresql+psycopg://u:p@db/x", "postgresql+psycopg://u:p@db/x"),
+    ],
+)
+def test_hosted_postgres_urls_get_the_psycopg_driver(
+    monkeypatch: pytest.MonkeyPatch, given: str, expected: str
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("DATABASE_URL", given)
+    assert Settings().database_url == expected  # type: ignore[call-arg]
