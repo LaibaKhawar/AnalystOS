@@ -31,11 +31,29 @@ class DuckDBEngine(QueryEngine):
         self.database_path = str(database_path)
         self.parquet_dir = Path(parquet_dir) if parquet_dir else None
         self._con = duckdb.connect(self.database_path, read_only=True)
-        self._con.execute("SET enable_external_access = false")
-        self._con.execute("SET threads = 2")
-        self._con.execute("SET memory_limit = '1GB'")
-        self._con.execute("SET lock_configuration = true")
+        self._harden()
         self._lock = threading.Lock()
+
+    def _harden(self) -> None:
+        """Disable file/network access and lock the configuration.
+
+        DuckDB shares one database instance per file inside a process, so a concurrent analysis on the same dataset
+        may find the configuration already locked. That is only acceptable if the lock holds the safe values, which
+        is verified here instead of assumed.
+        """
+        try:
+            self._con.execute("SET enable_external_access = false")
+            self._con.execute("SET threads = 2")
+            self._con.execute("SET memory_limit = '1GB'")
+            self._con.execute("SET lock_configuration = true")
+        except duckdb.InvalidInputException as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            row = self._con.execute(
+                "SELECT current_setting('enable_external_access'), current_setting('lock_configuration')"
+            ).fetchone()
+            if row is None or row[0] is not False or row[1] is not True:
+                raise QueryFailed("Dataset connection could not be secured") from exc
 
     def list_tables(self) -> list[TableInfo]:
         with self._lock:

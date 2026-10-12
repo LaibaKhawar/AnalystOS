@@ -233,6 +233,108 @@ def generate_adversarial(rng: np.random.Generator) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Customer ID", "Sales Region", "Revenue ($)", "Growth %", "Notes", "2026 Sales"])
 
 
+def generate_crm(rng: np.random.Generator) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Two related sheets: questions need a join on customer_id."""
+    names = [
+        "Alder Logistics",
+        "Birchway Foods",
+        "Cobalt Clinics",
+        "Dunmore Retail",
+        "Ember Freight",
+        "Fenwick Labs",
+        "Granite Health",
+        "Harbor Textiles",
+        "Ironleaf Media",
+        "Juniper Mills",
+        "Kestrel Energy",
+        "Lumen Schools",
+    ]
+    customers = pd.DataFrame(
+        {
+            "customer_id": [f"K{i:03d}" for i in range(1, len(names) + 1)],
+            "company": names,
+            "segment": [
+                "Enterprise" if i % 3 == 0 else "Mid-market" if i % 3 == 1 else "SMB" for i in range(len(names))
+            ],
+            "country": [
+                "Pakistan",
+                "UAE",
+                "UK",
+                "Pakistan",
+                "USA",
+                "UK",
+                "UAE",
+                "Pakistan",
+                "USA",
+                "UK",
+                "Pakistan",
+                "USA",
+            ],
+        }
+    )
+    weights = np.array(
+        [3.0 if seg == "Enterprise" else 1.5 if seg == "Mid-market" else 1.0 for seg in customers.segment]
+    )
+    rows = []
+    for order_id in range(1, 601):
+        idx = int(rng.choice(len(customers), p=weights / weights.sum()))
+        segment = customers.segment[idx]
+        base = 5200 if segment == "Enterprise" else 1800 if segment == "Mid-market" else 650
+        day = dt.date(2026, 1, 1) + dt.timedelta(days=int(rng.integers(0, 273)))
+        rows.append(
+            [
+                order_id,
+                customers.customer_id[idx],
+                day.isoformat(),
+                round(float(base * rng.uniform(0.6, 1.5)), 2),
+                "refunded" if rng.random() < 0.06 else "paid",
+            ]
+        )
+    orders = pd.DataFrame(rows, columns=["order_id", "customer_id", "order_date", "amount", "status"])
+    return customers, orders
+
+
+def chinook_truth(path: Path) -> dict[str, object]:
+    """Ground truth for the Chinook database (MIT licence), computed with plain SQLite."""
+    import sqlite3
+
+    con = sqlite3.connect(path)
+    one = lambda sql: con.execute(sql).fetchone()  # noqa: E731
+    truth = {
+        "chinook_top_customer_country": one("SELECT Country FROM Customer GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1")[
+            0
+        ],
+        "chinook_total_revenue": round(one("SELECT SUM(Total) FROM Invoice")[0], 2),
+        "chinook_avg_invoice": round(one("SELECT AVG(Total) FROM Invoice")[0], 4),
+        "chinook_top_genre_tracks": one(
+            "SELECT g.Name FROM Track t JOIN Genre g USING (GenreId) GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1"
+        )[0],
+        "chinook_top_artist_albums": one(
+            "SELECT a.Name FROM Album al JOIN Artist a USING (ArtistId) GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1"
+        )[0],
+        "chinook_top_country_revenue": one(
+            "SELECT c.Country FROM Invoice i JOIN Customer c USING (CustomerId) "
+            "GROUP BY 1 ORDER BY SUM(i.Total) DESC LIMIT 1"
+        )[0],
+        "chinook_top_genre_revenue": one(
+            "SELECT g.Name FROM InvoiceLine il JOIN Track t USING (TrackId) "
+            "JOIN Genre g ON g.GenreId = t.GenreId GROUP BY 1 "
+            "ORDER BY SUM(il.UnitPrice * il.Quantity) DESC LIMIT 1"
+        )[0],
+        "chinook_top_support_rep": one(
+            "SELECT e.FirstName || ' ' || e.LastName FROM Invoice i "
+            "JOIN Customer c USING (CustomerId) JOIN Employee e ON e.EmployeeId = c.SupportRepId "
+            "GROUP BY 1 ORDER BY SUM(i.Total) DESC LIMIT 1"
+        )[0],
+        "chinook_invoices_2012": one("SELECT COUNT(*) FROM Invoice WHERE strftime('%Y', InvoiceDate) = '2012'")[0],
+        "chinook_top_media_type": one(
+            "SELECT m.Name FROM Track t JOIN MediaType m USING (MediaTypeId) GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1"
+        )[0],
+    }
+    con.close()
+    return truth
+
+
 def q_bounds(year: int, q: int) -> tuple[str, str]:
     start = dt.date(year, 3 * (q - 1) + 1, 1)
     end = (pd.Timestamp(start) + pd.offsets.QuarterEnd(0)).date()
@@ -297,6 +399,31 @@ def ground_truth(sales: pd.DataFrame, saas: pd.DataFrame, marketing: pd.DataFram
     gt["saas_top_industry_mrr"] = saas.groupby("industry")["mrr"].sum().idxmax()
     gt["saas_seats_mrr_pearson"] = round(float(saas["seats"].corr(saas["mrr"])), 3)
 
+    gt["revenue_2026_q1"] = round(rev(q1), 2)
+    gt["growth_q2_vs_q1_2026_pct"] = round((rev(q2) - rev(q1)) / rev(q1) * 100, 2)
+    gt["top_avg_price_category"] = s.groupby("category")["price"].mean().idxmax()
+    gt["consumer_share_orders_2025_pct"] = round(float((s.loc[y25, "customer_segment"] == "Consumer").mean() * 100), 2)
+    gt["avg_revenue_overall"] = round(float(s["revenue"].mean()), 2)
+    gt["aov_2025"] = round(float(s.loc[y25, "revenue"].sum() / y25.sum()), 2)
+    lah_q2_aur = rev(q2 & lah & (s["product"] == "Aurora Laptop"))
+    lah_q3_aur = rev(q3 & lah & (s["product"] == "Aurora Laptop"))
+    gt["lahore_aurora_share_of_decline_pct"] = round(
+        (lah_q3_aur - lah_q2_aur) / (rev(q3 & lah) - rev(q2 & lah)) * 100, 2
+    )
+    profit = (
+        s.assign(p=s.revenue - s.cost)
+        .groupby("product")
+        .apply(lambda g: g.p.sum() / g.units.sum(), include_groups=False)
+    )
+    gt["top_profit_per_unit_product"] = profit.idxmax()
+
+    gt["saas_rows"] = len(saas)
+    gt["saas_avg_seats_enterprise"] = round(float(saas.loc[saas.plan == "Enterprise", "seats"].mean()), 2)
+    gt["saas_signups_2025"] = int((pd.to_datetime(saas.signup_date).dt.year == 2025).sum())
+    churn_ind = saas.assign(c=churned).groupby("industry")["c"].mean()
+    gt["saas_highest_churn_industry"] = churn_ind.idxmax()
+    gt["saas_median_mrr_active"] = round(float(saas.loc[~churned, "mrr"].median()), 2)
+
     m = marketing.copy()
     m["date"] = pd.to_datetime(m["date"])
     cpc = m.groupby("channel").apply(lambda g: g.spend.sum() / g.conversions.sum(), include_groups=False)
@@ -307,6 +434,21 @@ def ground_truth(sales: pd.DataFrame, saas: pd.DataFrame, marketing: pd.DataFram
     gt["mkt_email_conversion_rate_pct"] = round(float(email.conversions.sum() / email.clicks.sum() * 100), 2)
     ps = m[m.channel == "Paid Search"]
     gt["mkt_paid_search_spend_conversions_pearson"] = round(float(ps.spend.corr(ps.conversions)), 3)
+    ctr = m.groupby("channel").apply(lambda g: g.clicks.sum() / g.impressions.sum(), include_groups=False)
+    gt["mkt_highest_ctr_channel"] = ctr.idxmax()
+    gt["mkt_conversions_2026_q2"] = int(m.loc[(m.date >= "2026-04-01") & (m.date <= "2026-06-30"), "conversions"].sum())
+    social = m[m.channel == "Social"].groupby(m.date.dt.month)["spend"].sum()
+    gt["mkt_top_social_spend_month"] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+    ][int(social.idxmax()) - 1]
     return gt
 
 
@@ -343,7 +485,17 @@ def main() -> None:
                 "manager": ["Ayesha Raza", "Bilal Qureshi", "Sana Malik", "Hamza Javed", "Noor Fatima"],
             }
         ).to_excel(writer, sheet_name="Regions", index=False)
+    customers, orders = generate_crm(rng)
+    with pd.ExcelWriter(OUT / "crm_workbook.xlsx", engine="openpyxl") as writer:
+        customers.to_excel(writer, sheet_name="Customers", index=False)
+        orders.to_excel(writer, sheet_name="Orders", index=False)
+    joined = orders.merge(customers, on="customer_id")
     truth = ground_truth(sales, saas, marketing)
+    truth["crm_top_segment_revenue"] = joined.groupby("segment")["amount"].sum().idxmax()
+    truth["crm_top_customer_revenue"] = joined.groupby("company")["amount"].sum().idxmax()
+    truth["crm_enterprise_orders"] = int((joined.segment == "Enterprise").sum())
+    truth["crm_pakistan_revenue"] = round(float(joined.loc[joined.country == "Pakistan", "amount"].sum()), 2)
+    truth.update(chinook_truth(OUT / "chinook.sqlite"))
     (OUT / "ground_truth.json").write_text(json.dumps(truth, indent=2, default=str))
     print(f"sales rows={len(sales)} saas rows={len(saas)} marketing rows={len(marketing)}")
     print(json.dumps({k: v for k, v in truth.items() if not isinstance(v, dict)}, indent=2, default=str))

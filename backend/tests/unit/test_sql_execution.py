@@ -111,3 +111,18 @@ def test_postgres_engine_read_only_and_timeout(settings) -> None:  # type: ignor
         engine.close()
         with admin.begin() as conn:
             conn.execute(text("DROP SCHEMA ro_test CASCADE"))
+
+
+def test_concurrent_engines_on_one_dataset_stay_locked_down(tmp_path: Path) -> None:
+    """DuckDB shares the database instance per file; a second engine must not crash and must stay hardened."""
+    path = tmp_path / "shared.duckdb"
+    con = duckdb.connect(str(path))
+    con.execute("CREATE TABLE t AS SELECT 1 AS x")
+    con.close()
+    first = DuckDBEngine(path)
+    second = DuckDBEngine(path)  # configuration already locked by the first engine
+    assert second.execute("SELECT x FROM t", max_rows=5, timeout_seconds=5).rows == [[1]]
+    with pytest.raises(QueryFailed):
+        second.execute("SELECT * FROM read_csv('/etc/hosts')", max_rows=5, timeout_seconds=5)
+    first.close()
+    second.close()
