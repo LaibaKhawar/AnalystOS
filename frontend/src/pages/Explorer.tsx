@@ -10,7 +10,12 @@ import { PreviewPanel } from '@/components/explorer/PreviewPanel'
 import { ProfilePanel } from '@/components/explorer/ProfilePanel'
 import { SchemaGrid } from '@/components/explorer/SchemaGrid'
 import { SemanticSummary } from '@/components/explorer/SemanticSummary'
+import { AccessNotice } from '@/components/common/AccessNotice'
+import { RelationshipsPanel } from '@/components/explorer/RelationshipsPanel'
+import { MetricsPanel } from '@/components/metrics/MetricsPanel'
+import { AccessBadges } from '@/components/sources/AccessBadges'
 import { DeleteSourceButton } from '@/components/sources/DeleteSourceButton'
+import { ShareDialog } from '@/components/sources/ShareDialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -18,9 +23,13 @@ import { ContinuousTabs } from '@/components/watermelon/continuous-tabs'
 import { tabPanelProps } from '@/lib/tabs'
 import { useCreateConversation } from '@/hooks/queries/conversations'
 import { useSource, useTables } from '@/hooks/queries/sources'
+import { useMetrics } from '@/hooks/queries/metrics'
+import { useRoleAbilities, useSourceAbilities } from '@/hooks/usePermissions'
+import { VIEWER_EXPLANATION } from '@/lib/permissions'
+import { sourceRelationships } from '@/lib/relationships'
 import { formatBytes, formatInteger } from '@/lib/format'
 
-type Section = 'schema' | 'preview' | 'profile' | 'semantics'
+type Section = 'schema' | 'preview' | 'profile' | 'semantics' | 'metrics' | 'relationships'
 
 function ExplorerSkeleton() {
   return (
@@ -40,6 +49,9 @@ export default function Explorer() {
   const source = useSource(sourceId)
   const tables = useTables(sourceId)
   const create = useCreateConversation()
+  const metrics = useMetrics(sourceId)
+  const abilities = useSourceAbilities(source.data)
+  const { canCreate } = useRoleAbilities()
   const [section, setSection] = useState<Section>('schema')
   const [tableId, setTableId] = useState<string | null>(null)
   const justUploaded = params.get('uploaded') === '1'
@@ -51,6 +63,9 @@ export default function Explorer() {
     )
 
   const s = source.data
+  const canManage = abilities?.canManage ?? false
+  const canAsk = abilities?.canAsk ?? false
+  const relationshipCount = sourceRelationships(s).length
   const largest = tables.data?.reduce<(typeof tables.data)[number] | undefined>(
     (best, t) => (!best || t.row_count > best.row_count ? t : best),
     undefined,
@@ -77,15 +92,33 @@ export default function Explorer() {
         }
         actions={
           <>
+            <AccessBadges source={s} />
             <SourceStatusBadge status={s.status} />
-            <DeleteSourceButton source={s} onDeleted={() => navigate('/datasets')} />
-            <Button onClick={ask} disabled={create.isPending || s.status !== 'ready'} data-testid="ask-question">
-              <ChatCenteredTextIcon data-icon="inline-start" />
-              {create.isPending ? 'Opening workspace' : 'Ask a question'}
-            </Button>
+            {canManage && <DeleteSourceButton source={s} onDeleted={() => navigate('/datasets')} />}
+            {canManage && <ShareDialog source={s} />}
+            {canAsk && (
+              <Button onClick={ask} disabled={create.isPending || s.status !== 'ready'} data-testid="ask-question">
+                <ChatCenteredTextIcon data-icon="inline-start" />
+                {create.isPending ? 'Opening workspace' : 'Ask a question'}
+              </Button>
+            )}
           </>
         }
       />
+
+      {!canAsk && (
+        <AccessNotice
+          tone="read"
+          title={
+            canCreate ? 'You have read-only access to this source' : 'Asking questions is not available for your role'
+          }
+          testId="read-only-notice"
+        >
+          {canCreate
+            ? 'You can explore the schema, preview, profile, metrics and join keys. Ask the owner to share it with you as an analyst to ask questions about it.'
+            : VIEWER_EXPLANATION}
+        </AccessNotice>
+      )}
 
       {justUploaded && (
         <div
@@ -138,7 +171,11 @@ export default function Explorer() {
       {table && (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {tables.data && tables.data.length > 1 ? (
+            {section === 'metrics' || section === 'relationships' ? (
+              <p className="text-muted-foreground text-sm">
+                Across all {formatInteger(s.table_count)} {s.table_count === 1 ? 'table' : 'tables'} of this source
+              </p>
+            ) : tables.data && tables.data.length > 1 ? (
               <div className="flex items-center gap-2">
                 <label htmlFor="table-select" className="text-muted-foreground text-xs">
                   Table
@@ -173,15 +210,19 @@ export default function Explorer() {
                   { id: 'preview', label: 'Preview' },
                   { id: 'profile', label: 'Profile' },
                   { id: 'semantics', label: 'Semantics' },
+                  { id: 'metrics', label: 'Metrics', count: metrics.data?.length },
+                  { id: 'relationships', label: 'Relationships', count: relationshipCount },
                 ]}
               />
             </div>
           </div>
           <div {...tabPanelProps('explorer', section)}>
-            {section === 'schema' && <SchemaGrid sourceId={s.id} table={table} />}
+            {section === 'schema' && <SchemaGrid sourceId={s.id} table={table} editable={canManage} />}
             {section === 'preview' && <PreviewPanel sourceId={s.id} tableId={table.id} />}
             {section === 'profile' && <ProfilePanel table={table} />}
             {section === 'semantics' && <SemanticSummary table={table} />}
+            {section === 'metrics' && <MetricsPanel sourceId={s.id} tables={tables.data ?? []} canManage={canManage} />}
+            {section === 'relationships' && <RelationshipsPanel source={s} />}
           </div>
         </>
       )}

@@ -39,7 +39,7 @@ export function UserMenu() {
       <DropdownMenuContent align="start" side="top" className="w-56">
         <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={logout}>
+        <DropdownMenuItem onSelect={() => void logout()}>
           <SignOutIcon />
           Sign out
         </DropdownMenuItem>

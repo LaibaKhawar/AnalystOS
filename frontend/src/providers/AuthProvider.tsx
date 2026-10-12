@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { setUnauthorizedHandler, tokenStore } from '@/api/client'
+import { logoutSession, setUnauthorizedHandler, tokenStore } from '@/api/client'
 import { authApi } from '@/api/endpoints'
 import type { LoginInput, RegisterInput, TokenResponse, User } from '@/api/types'
 import { qk } from '@/hooks/queries/keys'
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const accept = useCallback(
     (response: TokenResponse): User => {
-      tokenStore.set(response.access_token)
+      tokenStore.set(response.access_token, response.refresh_token || null)
       client.clear()
       client.setQueryData(qk.me, response.user)
       setToken(response.access_token)
@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (input: LoginInput) => accept(await authApi.login(input)), [accept])
   const register = useCallback(async (input: RegisterInput) => accept(await authApi.register(input)), [accept])
-  const logout = useCallback(() => {
-    tokenStore.clear()
+  const logout = useCallback(async () => {
+    await logoutSession()
     setToken(null)
     client.clear()
     navigate('/welcome', { replace: true })

@@ -15,6 +15,7 @@ import { ErrorState } from '@/components/common/States'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useConversations, useCreateConversation, useResetContext } from '@/hooks/queries/conversations'
+import { useSourceAbilities } from '@/hooks/usePermissions'
 import { useTables } from '@/hooks/queries/sources'
 import { formatCell, formatInteger, formatRelative, noDashes } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -140,6 +141,7 @@ export function SourcePanel({ source, conversation }: { source: DataSource | und
   const tables = useTables(conversation.data_source_id)
   const conversations = useConversations(conversation.data_source_id)
   const create = useCreateConversation()
+  const abilities = useSourceAbilities(source)
 
   const newConversation = () =>
     create.mutate(
@@ -195,10 +197,12 @@ export function SourcePanel({ source, conversation }: { source: DataSource | und
           <h2 id="conv-title" className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
             Conversations
           </h2>
-          <Button variant="ghost" size="xs" onClick={newConversation} disabled={create.isPending}>
-            <PlusIcon data-icon="inline-start" />
-            New
-          </Button>
+          {abilities?.canAsk !== false && (
+            <Button variant="ghost" size="xs" onClick={newConversation} disabled={create.isPending}>
+              <PlusIcon data-icon="inline-start" />
+              New
+            </Button>
+          )}
         </div>
         {conversations.isPending && <Skeleton className="h-20" />}
         {conversations.isError && (

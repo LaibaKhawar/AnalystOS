@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router'
 import { cn } from '@/lib/utils'
-import { NAV_ITEMS } from './nav'
+import { useRoleAbilities } from '@/hooks/usePermissions'
+import { visibleNavItems } from './nav'
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation()
+  const { isAdmin } = useRoleAbilities()
   return (
     <nav aria-label="Main" className="flex flex-col gap-0.5">
-      {NAV_ITEMS.map((item) => {
+      {visibleNavItems(isAdmin).map((item) => {
         const active = item.match(pathname)
         const Icon = item.icon
         return (

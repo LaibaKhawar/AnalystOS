@@ -1,4 +1,11 @@
-import { ArrowRightIcon, FileTextIcon, WarningIcon } from '@phosphor-icons/react'
+import {
+  ArrowRightIcon,
+  CaretRightIcon,
+  CheckCircleIcon,
+  FileTextIcon,
+  QuestionIcon,
+  WarningIcon,
+} from '@phosphor-icons/react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { errorMessage } from '@/api/client'
@@ -7,11 +14,13 @@ import { ChartCard } from '@/components/charts/ChartCard'
 import { ErrorState } from '@/components/common/States'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useCharts, useClaims, useCreateReport } from '@/hooks/queries/analyses'
-import { useReports } from '@/hooks/queries/reports'
+import { useAnalysisReport, useCharts, useClaims, useCreateReport } from '@/hooks/queries/analyses'
+import { claimBadge, headlineClaim } from '@/lib/claims'
 import { noDashes } from '@/lib/format'
 import { ClaimGroups } from './ClaimList'
 import { CostLine } from './CostLine'
+import { ScopeNote } from './ScopeNote'
+import { plainAssumptions } from '@/lib/scope'
 
 function ListBlock({
   title,
@@ -35,6 +44,40 @@ function ListBlock({
         ))}
       </ul>
     </section>
+  )
+}
+
+/** The answer headline. When the API stored it as a verified claim, it opens that claim's evidence. */
+function Headline({ text, claim, onOpen }: { text: string; claim: Claim | undefined; onOpen: (claim: Claim) => void }) {
+  const className = 'text-foreground text-lg leading-snug font-semibold tracking-[-0.01em]'
+  if (!claim) {
+    return (
+      <p className={className} data-testid="answer-headline">
+        {text}
+      </p>
+    )
+  }
+  const badge = claimBadge(claim.status)
+  const Icon = claim.status === 'verified' ? CheckCircleIcon : QuestionIcon
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(claim)}
+      data-testid="answer-headline"
+      data-status={claim.status}
+      aria-label={`${text}. ${badge.label}. Open evidence for the headline`}
+      className="group hover:bg-muted/60 focus-visible:ring-ring/60 -mx-2 -my-1 flex w-[calc(100%+1rem)] items-start gap-2 rounded-lg px-2 py-1 text-left transition-colors outline-none focus-visible:ring-2 active:scale-[0.995]"
+    >
+      <span className={className}>{text}</span>
+      <span className="mt-1.5 flex shrink-0 items-center gap-0.5">
+        <Icon
+          className={claim.status === 'verified' ? 'text-brand size-4' : 'text-warning size-4'}
+          weight={claim.status === 'verified' ? 'fill' : 'bold'}
+          aria-hidden="true"
+        />
+        <CaretRightIcon className="text-muted-foreground size-3.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      </span>
+    </button>
   )
 }
 
@@ -69,11 +112,12 @@ export function AnswerView({
   const navigate = useNavigate()
   const charts = useCharts(analysis.id, analysis.status)
   const claims = useClaims(analysis.id, analysis.status)
-  const reports = useReports()
+  const report = useAnalysisReport(analysis.id, analysis.status)
   const createReport = useCreateReport()
   const answer = analysis.answer ?? {}
-  const existingReport = reports.data?.find((r) => r.analysis_id === analysis.id)
+  const existingReport = report.data ?? null
   const v = answer.verification
+  const headline = noDashes(answer.headline ?? analysis.summary ?? 'Analysis complete')
 
   const generate = () =>
     createReport.mutate(analysis.id, {
@@ -84,21 +128,18 @@ export function AnswerView({
   return (
     <div className="flex flex-col gap-5" data-testid="analysis-answer">
       <div>
-        <p
-          className="text-foreground text-lg leading-snug font-semibold tracking-[-0.01em]"
-          data-testid="answer-headline"
-        >
-          {noDashes(answer.headline ?? analysis.summary ?? 'Analysis complete')}
-        </p>
+        <Headline text={headline} claim={headlineClaim(claims.data)} onOpen={onOpenClaim} />
         {v && (
           <p className="text-muted-foreground mt-1.5 text-xs">
             {v.verified ?? 0} statements verified against query results
             {(v.removed ?? 0) > 0 ? `, ${v.removed} unsupported removed` : ''}
-            {(v.repaired ?? 0) > 0 ? `, ${v.repaired} rewritten and re-verified` : ''}. Select any statement to see its
-            evidence.
+            {(v.repaired ?? 0) > 0 ? `, ${v.repaired} rewritten and re-verified` : ''}. Select the headline or any
+            statement to see its evidence.
           </p>
         )}
       </div>
+
+      <ScopeNote answer={answer} />
 
       {charts.isPending && <Skeleton className="h-80 w-full" />}
       {charts.isError && (
@@ -125,7 +166,7 @@ export function AnswerView({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <ListBlock title="Caveats" items={answer.caveats ?? []} tone="warning" />
-        <ListBlock title="Assumptions" items={answer.assumptions ?? []} />
+        <ListBlock title="Assumptions" items={plainAssumptions(answer)} />
       </div>
       <ListBlock title="Steps that failed" items={answer.failed_steps ?? []} tone="warning" />
 
@@ -151,7 +192,9 @@ export function AnswerView({
 
       <footer className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
         <CostLine analysis={analysis} />
-        {existingReport ? (
+        {report.isPending ? (
+          <Skeleton className="h-7 w-32" />
+        ) : existingReport ? (
           <Button variant="outline" size="sm" onClick={() => navigate(`/reports/${existingReport.id}`)}>
             <FileTextIcon data-icon="inline-start" />
             Open report

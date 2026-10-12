@@ -20,8 +20,24 @@ const SECTION_ORDER: Record<string, number> = Object.fromEntries(FACT_SECTIONS.m
  * - recommendations: kind "recommendation"
  * Removed claims and caveats are excluded (caveats render from answer.caveats).
  */
+const normalize = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/** The verified headline sentence, stored as a claim with section "headline" so it has its own evidence. */
+export function headlineClaim(claims: Claim[] | undefined): Claim | undefined {
+  return claims?.find((c) => c.section === 'headline' && c.status !== 'removed')
+}
+
 export function groupClaims(claims: Claim[]): ClaimGroup[] {
-  const visible = claims.filter((c) => c.status !== 'removed' && c.kind !== 'caveat' && c.section !== 'headline')
+  // The headline is shown (and opens its evidence) above the lists; never repeat it, nor a fact with the same text.
+  const headline = claims.find((c) => c.section === 'headline')
+  const headlineText = headline ? normalize(headline.text) : null
+  const visible = claims.filter(
+    (c) =>
+      c.status !== 'removed' &&
+      c.kind !== 'caveat' &&
+      c.section !== 'headline' &&
+      (headlineText === null || normalize(c.text) !== headlineText),
+  )
   const facts: Claim[] = []
   const interpretations: Claim[] = []
   const recommendations: Claim[] = []

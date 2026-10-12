@@ -9,12 +9,16 @@ import { EmptyState, ErrorState } from '@/components/common/States'
 import { SourceStatusBadge } from '@/components/common/StatusBadge'
 import { Field } from '@/components/forms/Field'
 import { FormError } from '@/components/forms/FormError'
+import { AccessNotice } from '@/components/common/AccessNotice'
+import { AccessBadges } from '@/components/sources/AccessBadges'
 import { DeleteSourceButton } from '@/components/sources/DeleteSourceButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCreateConnection, useRefreshSource, useSources } from '@/hooks/queries/sources'
+import { useRoleAbilities, useSourceAbilities } from '@/hooks/usePermissions'
+import { VIEWER_EXPLANATION } from '@/lib/permissions'
 import { formatDateTime, formatInteger } from '@/lib/format'
 
 const DEFAULT_PORT: Record<ConnectionKind, string> = { postgresql: '5432', mysql: '3306', sqlite: '' }
@@ -207,17 +211,18 @@ function ConnectionForm() {
 
 function ConnectionRow({ source }: { source: DataSource }) {
   const refresh = useRefreshSource()
+  const abilities = useSourceAbilities(source)
   return (
     <li className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <DatabaseIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
         <div className="min-w-0">
-          <Link
-            to={`/sources/${source.id}`}
-            className="text-foreground block truncate text-sm font-medium hover:underline"
-          >
-            {source.name}
-          </Link>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <Link to={`/sources/${source.id}`} className="text-foreground truncate text-sm font-medium hover:underline">
+              {source.name}
+            </Link>
+            <AccessBadges source={source} />
+          </span>
           <p className="text-muted-foreground truncate text-xs">
             {KIND_LABEL[source.kind as ConnectionKind] ?? source.kind}
             {source.host ? `, ${source.username ? `${source.username}@` : ''}${source.host}:${source.port ?? ''}` : ''}
@@ -242,19 +247,23 @@ function ConnectionRow({ source }: { source: DataSource }) {
       </div>
       <div className="flex items-center gap-2 pl-7 sm:pl-0">
         <SourceStatusBadge status={source.status} />
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={refresh.isPending}
-          onClick={() => refresh.mutate(source.id, { onSuccess: () => toast.success(`${source.name} refreshed`) })}
-        >
-          <ArrowClockwiseIcon
-            data-icon="inline-start"
-            className={refresh.isPending ? 'motion-safe:animate-spin' : undefined}
-          />
-          {refresh.isPending ? 'Checking' : 'Refresh'}
-        </Button>
-        <DeleteSourceButton source={source} />
+        {abilities?.canManage && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={refresh.isPending}
+              onClick={() => refresh.mutate(source.id, { onSuccess: () => toast.success(`${source.name} refreshed`) })}
+            >
+              <ArrowClockwiseIcon
+                data-icon="inline-start"
+                className={refresh.isPending ? 'motion-safe:animate-spin' : undefined}
+              />
+              {refresh.isPending ? 'Checking' : 'Refresh'}
+            </Button>
+            <DeleteSourceButton source={source} />
+          </>
+        )}
       </div>
     </li>
   )
@@ -262,6 +271,7 @@ function ConnectionRow({ source }: { source: DataSource }) {
 
 export default function Connections() {
   const sources = useSources()
+  const { canCreate } = useRoleAbilities()
   const connections = sources.data?.filter((s) => s.kind !== 'file') ?? []
   return (
     <div className="flex flex-col gap-8">
@@ -270,7 +280,13 @@ export default function Connections() {
         description="Query PostgreSQL, MySQL or SQLite in place. AnalystOS reads schema and runs validated, read-only SELECT queries."
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <ConnectionForm />
+        {canCreate ? (
+          <ConnectionForm />
+        ) : (
+          <AccessNotice title="Connecting databases is not available for your role" className="self-start">
+            {VIEWER_EXPLANATION} Connections shared with you are listed below.
+          </AccessNotice>
+        )}
         <aside className="bg-muted/30 flex flex-col gap-4 self-start rounded-lg border p-5 text-sm">
           <div className="flex items-start gap-3">
             <LockKeyIcon className="text-brand mt-0.5 size-4 shrink-0" />
@@ -302,7 +318,11 @@ export default function Connections() {
           <EmptyState
             icon={<DatabaseIcon className="size-4" />}
             title="No connections yet"
-            description="Fill in the form above. The connection is tested and its schema is profiled before it is saved."
+            description={
+              canCreate
+                ? 'Fill in the form above. The connection is tested and its schema is profiled before it is saved.'
+                : 'When someone shares a database connection with you, it appears here.'
+            }
           />
         )}
         {connections.length > 0 && (

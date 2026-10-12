@@ -14,14 +14,17 @@ export interface ApiErrorBody {
 }
 
 /* ---------- auth ---------- */
+export type UserRole = 'admin' | 'analyst' | 'viewer'
 export interface User {
   id: string
   email: string
   name: string
   is_admin: boolean
+  role: UserRole
 }
 export interface TokenResponse {
   access_token: string
+  refresh_token: string
   token_type: string
   user: User
 }
@@ -54,10 +57,25 @@ export interface IngestionTableReport {
     sheet?: string
   }
 }
+export interface Relationship {
+  child_table: string
+  child_column: string
+  parent_table: string
+  parent_column: string
+  /** Share of the child's distinct values found in the parent column (0 to 1). */
+  containment: number
+  source: 'declared' | 'inferred' | (string & {})
+  sampled?: boolean
+}
+
 export interface IngestionReport {
   tables: IngestionTableReport[]
   warnings?: string[]
+  relationships?: Relationship[]
 }
+
+/** Effective access to a data source: owners and admins manage, shares grant ask or read. */
+export type SourceAccess = 'manage' | 'ask' | 'read'
 
 export interface DataSource {
   id: string
@@ -81,6 +99,53 @@ export interface DataSource {
   file_type: string | null
   size_bytes: number | null
   ingestion_report: IngestionReport | null
+  /** Null on upload responses, which are always the caller's own source. */
+  access?: SourceAccess | null
+  owned?: boolean
+  relationships?: Relationship[]
+}
+
+export type ShareRole = 'viewer' | 'analyst'
+export interface SourceShare {
+  id: string
+  user_id: string
+  email: string
+  name: string
+  role: ShareRole | (string & {})
+  created_at: ISODate
+}
+export interface ShareInput {
+  email: string
+  role: ShareRole
+}
+
+/* ---------- saved metrics ---------- */
+export type MetricFormat = 'number' | 'currency' | 'percent'
+export interface MetricFilter {
+  column: string
+  op: string
+  value: JsonValue
+}
+export interface MetricDefinition {
+  id: string
+  data_source_id: string
+  table_name: string
+  name: string
+  label: string
+  description: string | null
+  expression: string
+  format: MetricFormat | (string & {})
+  filters: MetricFilter[]
+  created_at: ISODate
+}
+export interface MetricInput {
+  name: string
+  label: string
+  description: string | null
+  table: string
+  expression: string
+  format: MetricFormat
+  filters: MetricFilter[]
 }
 
 export interface ConnectionInput {
@@ -258,6 +323,20 @@ export interface Plan {
     period?: string | null
   }
   steps?: PlanStep[]
+  /** True when the question was answered from the precomputed profile with no model calls. */
+  fast_path?: boolean
+}
+
+export interface ScopeIssue {
+  step_id: string
+  kind: 'filter' | 'period' | (string & {})
+  detail: string
+  column: string | null
+}
+export interface ScopeReport {
+  issues_found: number
+  fixed: number
+  remaining: ScopeIssue[]
 }
 
 export interface Verification {
@@ -291,6 +370,7 @@ export interface Answer {
   failed_steps?: string[]
   tool_stats?: ToolStats
   clarification?: boolean
+  scope?: ScopeReport
 }
 
 export interface AnalysisStep {
@@ -339,6 +419,7 @@ export type EventType =
   | 'step_failed'
   | 'step_skipped'
   | 'retry'
+  | 'scope_check'
   | 'verification'
   | 'clarification'
   | 'completed'
@@ -593,6 +674,47 @@ export interface EvaluationCase {
 }
 export interface EvaluationRunDetail extends EvaluationRun {
   cases: EvaluationCase[]
+}
+
+/* ---------- schedules and alerts ---------- */
+export type Severity = 'low' | 'medium' | 'high'
+export interface Schedule {
+  id: string
+  data_source_id: string
+  conversation_id: string
+  name: string
+  question: string
+  interval_minutes: number
+  enabled: boolean
+  alert_min_severity: Severity | (string & {})
+  webhook_url: string | null
+  next_run_at: ISODate
+  last_run_at: ISODate | null
+  last_analysis_id: string | null
+  /** Status of the last run's analysis (queued, running, completed, failed). */
+  last_status?: string | null
+  created_at: ISODate
+}
+export interface ScheduleInput {
+  data_source_id: string
+  name: string
+  question: string
+  interval_minutes: number
+  alert_min_severity: Severity
+  webhook_url: string | null
+  enabled: boolean
+}
+export interface Alert {
+  id: string
+  schedule_id: string | null
+  analysis_id: string | null
+  severity: Severity | (string & {})
+  title: string
+  message: string
+  /** sent, not_configured, "failed: ..." or "blocked: ..." */
+  delivery_status: string
+  read_at: ISODate | null
+  created_at: ISODate
 }
 
 /* ---------- system ---------- */

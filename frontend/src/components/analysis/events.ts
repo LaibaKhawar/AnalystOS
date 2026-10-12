@@ -23,6 +23,8 @@ export function describeEvent(event: AnalysisEvent): { text: string; tone: Event
       return { text: msg, tone: 'neutral' }
     case 'retry':
       return { text: msg, tone: 'warning' }
+    case 'scope_check':
+      return { text: `Scope check: ${msg}`, tone: 'warning' }
     case 'verification':
       return { text: msg, tone: 'success' }
     case 'clarification':
@@ -45,6 +47,7 @@ export function currentPhase(events: AnalysisEvent[], fallback: string): string 
     if (e.type === 'status') return noDashes(e.message)
     if (e.type === 'step_started') return `Running: ${noDashes(e.message)}`
     if (e.type === 'retry') return noDashes(e.message)
+    if (e.type === 'scope_check') return 'Correcting the scope of the plan'
     if (e.type === 'plan') return 'Executing the plan'
   }
   return fallback

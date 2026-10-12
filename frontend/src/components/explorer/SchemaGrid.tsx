@@ -4,7 +4,16 @@ import { ConfidenceBar } from '@/components/common/ConfidenceBar'
 import { Pill } from '@/components/common/StatusBadge'
 import { ColumnEditor } from './ColumnEditor'
 
-export function SchemaGrid({ sourceId, table }: { sourceId: string; table: Table }) {
+/** Column editing is offered only to people who manage the source (`editable`). */
+export function SchemaGrid({
+  sourceId,
+  table,
+  editable = true,
+}: {
+  sourceId: string
+  table: Table
+  editable?: boolean
+}) {
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full min-w-[760px] text-left text-sm">
@@ -48,9 +57,7 @@ export function SchemaGrid({ sourceId, table }: { sourceId: string; table: Table
                     <span className="text-muted-foreground text-xs">No</span>
                   )}
                 </td>
-                <td className="px-2 py-2 text-right">
-                  <ColumnEditor sourceId={sourceId} column={c} />
-                </td>
+                <td className="px-2 py-2 text-right">{editable && <ColumnEditor sourceId={sourceId} column={c} />}</td>
               </tr>
             ))}
         </tbody>

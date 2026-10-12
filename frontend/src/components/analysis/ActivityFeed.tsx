@@ -2,6 +2,7 @@ import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   CircleIcon,
+  FunnelIcon,
   ListChecksIcon,
   SealCheckIcon,
   WarningCircleIcon,
@@ -37,6 +38,8 @@ function EventIcon({ event }: { event: AnalysisEvent }) {
       return <ArrowsClockwiseIcon className={cls} />
     case 'verification':
       return <SealCheckIcon className={cls} weight="fill" />
+    case 'scope_check':
+      return <FunnelIcon className={cls} />
     case 'clarification':
       return <WarningCircleIcon className={cls} />
     default:

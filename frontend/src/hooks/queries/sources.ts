@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sourcesApi } from '@/api/endpoints'
-import type { ColumnPatch, ConnectionInput, DataSource, Table } from '@/api/types'
+import type { ColumnPatch, ConnectionInput, DataSource, ShareInput, SourceShare, Table } from '@/api/types'
 import { qk } from './keys'
 
 export function useSources() {
@@ -79,6 +79,35 @@ export function usePatchColumn(sourceId: string) {
         tables?.map((t) => ({ ...t, columns: t.columns.map((c) => (c.id === column.id ? column : c)) })),
       )
       void client.invalidateQueries({ queryKey: ['sources', sourceId, 'tables'] })
+    },
+  })
+}
+
+export function useShares(sourceId: string, enabled = true) {
+  return useQuery({ queryKey: qk.shares(sourceId), queryFn: () => sourcesApi.shares(sourceId), enabled })
+}
+
+export function useShareSource(sourceId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (input: ShareInput) => sourcesApi.share(sourceId, input),
+    onSuccess: (share) => {
+      client.setQueryData<SourceShare[]>(qk.shares(sourceId), (list) => {
+        if (!list) return [share]
+        return list.some((s) => s.id === share.id) ? list.map((s) => (s.id === share.id ? share : s)) : [...list, share]
+      })
+      void client.invalidateQueries({ queryKey: qk.shares(sourceId) })
+    },
+  })
+}
+
+export function useUnshareSource(sourceId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (shareId: string) => sourcesApi.unshare(sourceId, shareId),
+    onSuccess: (_data, shareId) => {
+      client.setQueryData<SourceShare[]>(qk.shares(sourceId), (list) => list?.filter((s) => s.id !== shareId))
+      void client.invalidateQueries({ queryKey: qk.shares(sourceId) })
     },
   })
 }

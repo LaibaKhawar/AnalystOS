@@ -9,6 +9,8 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState, ErrorState } from '@/components/common/States'
 import { SourceStatusBadge } from '@/components/common/StatusBadge'
 import { Field } from '@/components/forms/Field'
+import { AccessNotice } from '@/components/common/AccessNotice'
+import { AccessBadges } from '@/components/sources/AccessBadges'
 import { DeleteSourceButton } from '@/components/sources/DeleteSourceButton'
 import { UploadDropzone, type UploadItem } from '@/components/ui/file-upload-4'
 import { Input } from '@/components/ui/input'
@@ -16,13 +18,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ContinuousTabs } from '@/components/watermelon/continuous-tabs'
 import { qk } from '@/hooks/queries/keys'
 import { useSources } from '@/hooks/queries/sources'
+import { useRoleAbilities, useSourceAbilities } from '@/hooks/usePermissions'
 import { formatBytes, formatInteger, formatRelative } from '@/lib/format'
+import { VIEWER_EXPLANATION } from '@/lib/permissions'
 import { validateUpload } from '@/lib/upload'
 
 type Filter = 'all' | 'file' | 'database'
 
 function SourceRow({ source }: { source: DataSource }) {
   const isFile = source.kind === 'file'
+  const abilities = useSourceAbilities(source)
   return (
     <li className="flex items-center gap-3 px-3 py-3 sm:px-4">
       <span className="bg-muted/40 flex size-8 shrink-0 items-center justify-center rounded-lg border">
@@ -36,7 +41,10 @@ function SourceRow({ source }: { source: DataSource }) {
         to={`/sources/${source.id}`}
         className="focus-visible:ring-ring/60 min-w-0 flex-1 rounded-md outline-none focus-visible:ring-2"
       >
-        <span className="text-foreground block truncate text-sm font-medium hover:underline">{source.name}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-foreground truncate text-sm font-medium hover:underline">{source.name}</span>
+          <AccessBadges source={source} />
+        </span>
         <span className="text-muted-foreground block truncate text-xs">
           {isFile
             ? `${(source.file_type ?? '').toUpperCase()}, ${formatBytes(source.size_bytes)}`
@@ -48,13 +56,14 @@ function SourceRow({ source }: { source: DataSource }) {
       <span className="hidden sm:block">
         <SourceStatusBadge status={source.status} />
       </span>
-      <DeleteSourceButton source={source} />
+      {abilities?.canManage && <DeleteSourceButton source={source} />}
     </li>
   )
 }
 
 export default function Datasets() {
   const sources = useSources()
+  const { canCreate } = useRoleAbilities()
   const client = useQueryClient()
   const navigate = useNavigate()
   const [items, setItems] = useState<UploadItem[]>([])
@@ -114,27 +123,41 @@ export default function Datasets() {
         description="Upload CSV or Excel files. Each file is profiled on arrival: types, roles, missing values, outliers and likely PII."
       />
 
-      <section aria-labelledby="upload-title" className="bg-card rounded-lg border p-4 sm:p-5">
-        <h2 id="upload-title" className="text-foreground text-sm font-medium">
-          Upload a file
-        </h2>
-        <Field label="Dataset name" optional hint="Defaults to the file name." className="mt-4 max-w-sm">
-          {(p) => (
-            <Input {...p} value={name} onChange={(e) => setName(e.target.value)} maxLength={200} disabled={uploading} />
-          )}
-        </Field>
-        <UploadDropzone
-          className="mt-4"
-          items={items}
-          onFiles={onFiles}
-          disabled={uploading}
-          onRemove={(id) => setItems((prev) => prev.filter((i) => i.id !== id))}
-          onRetry={(id) => {
-            const file = files.current.get(id)
-            if (file && validateUpload(file).ok) start(id, file)
-          }}
-        />
-      </section>
+      {!canCreate && (
+        <AccessNotice title="Uploading is not available for your role">
+          {VIEWER_EXPLANATION} Datasets shared with you are listed below.
+        </AccessNotice>
+      )}
+
+      {canCreate && (
+        <section aria-labelledby="upload-title" className="bg-card rounded-lg border p-4 sm:p-5">
+          <h2 id="upload-title" className="text-foreground text-sm font-medium">
+            Upload a file
+          </h2>
+          <Field label="Dataset name" optional hint="Defaults to the file name." className="mt-4 max-w-sm">
+            {(p) => (
+              <Input
+                {...p}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={200}
+                disabled={uploading}
+              />
+            )}
+          </Field>
+          <UploadDropzone
+            className="mt-4"
+            items={items}
+            onFiles={onFiles}
+            disabled={uploading}
+            onRemove={(id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+            onRetry={(id) => {
+              const file = files.current.get(id)
+              if (file && validateUpload(file).ok) start(id, file)
+            }}
+          />
+        </section>
+      )}
 
       <section aria-labelledby="sources-title" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -179,8 +202,10 @@ export default function Datasets() {
                   </Link>{' '}
                   page.
                 </>
-              ) : (
+              ) : canCreate ? (
                 'Drop a .csv or .xlsx file above. It will be profiled and ready to question in seconds.'
+              ) : (
+                'When someone shares a dataset or connection with you, it appears here.'
               )
             }
           />

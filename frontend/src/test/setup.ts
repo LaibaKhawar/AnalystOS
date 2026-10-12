@@ -24,3 +24,11 @@ class RO {
   disconnect() {}
 }
 if (!('ResizeObserver' in globalThis)) Object.assign(globalThis, { ResizeObserver: RO })
+
+// Radix Select and Popover rely on pointer capture and scrollIntoView, which jsdom lacks.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => undefined
+  Element.prototype.releasePointerCapture = () => undefined
+}
+if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => undefined

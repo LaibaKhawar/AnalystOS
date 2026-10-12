@@ -13,12 +13,14 @@ import {
 import { AnalysisStatusBadge } from '@/components/common/StatusBadge'
 import { useRecentAnalyses } from '@/hooks/queries/analyses'
 import { useSources } from '@/hooks/queries/sources'
-import { NAV_ITEMS } from './nav'
+import { useRoleAbilities } from '@/hooks/usePermissions'
+import { visibleNavItems } from './nav'
 
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const navigate = useNavigate()
   const sources = useSources()
   const analyses = useRecentAnalyses(20)
+  const { isAdmin } = useRoleAbilities()
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -47,7 +49,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       <CommandList>
         <CommandEmpty>No matches. Try a dataset name or part of a question.</CommandEmpty>
         <CommandGroup heading="Pages">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems(isAdmin, true).map((item) => (
             <CommandItem key={item.to} value={`page ${item.label}`} onSelect={() => go(item.to)}>
               <item.icon />
               {item.label}

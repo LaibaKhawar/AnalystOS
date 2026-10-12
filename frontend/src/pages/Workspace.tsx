@@ -14,6 +14,7 @@ import { SourcePanel } from '@/components/workspace/SourcePanel'
 import { isActive } from '@/hooks/queries/analyses'
 import { useAsk, useConversation, useConversationAnalyses } from '@/hooks/queries/conversations'
 import { useSource } from '@/hooks/queries/sources'
+import { useSourceAbilities } from '@/hooks/usePermissions'
 import { errorMessage } from '@/api/client'
 import { forgetConversation, rememberConversation } from '@/lib/last-conversation'
 import { noDashes } from '@/lib/format'
@@ -41,6 +42,8 @@ export default function Workspace() {
   const analyses = useConversationAnalyses(conversationId)
   const source = useSource(conversation.data?.data_source_id)
   const ask = useAsk(conversationId)
+  const abilities = useSourceAbilities(source.data)
+  const readOnly = abilities !== null && !abilities.canAsk
   const [draft, setDraft] = useState('')
   const [focusKey, setFocusKey] = useState(0)
   const [evidence, setEvidence] = useState<{ analysisId: string; claimId: string } | null>(null)
@@ -168,7 +171,7 @@ export default function Workspace() {
                   onOpenClaim={openClaim}
                   onFollowUp={followUp}
                   onClarify={submit}
-                  conversationBusy={busy}
+                  conversationBusy={busy || readOnly}
                 />
               ))}
               <div ref={threadEnd} />
@@ -180,8 +183,12 @@ export default function Workspace() {
                 value={draft}
                 onChange={setDraft}
                 onSubmit={submit}
-                disabled={busy || !conversation.data}
-                disabledReason="An analysis is running in this conversation. You can ask again when it finishes."
+                disabled={busy || !conversation.data || readOnly}
+                disabledReason={
+                  readOnly
+                    ? 'You have read-only access to this data source, so you cannot ask new questions here.'
+                    : 'An analysis is running in this conversation. You can ask again when it finishes.'
+                }
                 sourceName={source.data?.name}
                 focusKey={focusKey}
               />

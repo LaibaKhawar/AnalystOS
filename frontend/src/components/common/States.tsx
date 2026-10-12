@@ -1,8 +1,17 @@
-import { ArrowClockwiseIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, HourglassIcon, LockKeyIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { errorMessage } from '@/api/client'
+import { errorMessage, isForbidden, isRateLimited } from '@/api/client'
 import { cn } from '@/lib/utils'
+
+/** Title and icon for errors that need a specific explanation: missing permission and rate limits. */
+function errorKind(error: unknown): { title: string; icon: ReactNode } | null {
+  if (isForbidden(error))
+    return { title: 'You do not have permission', icon: <LockKeyIcon className="text-danger mt-0.5 size-4 shrink-0" /> }
+  if (isRateLimited(error))
+    return { title: 'Slow down', icon: <HourglassIcon className="text-warning mt-0.5 size-4 shrink-0" /> }
+  return null
+}
 
 /** Inline, contextual error with a retry action. Always shows the backend's error.message. */
 export function ErrorState({
@@ -18,21 +27,25 @@ export function ErrorState({
   className?: string
   compact?: boolean
 }) {
+  const kind = errorKind(error)
+  const limited = isRateLimited(error)
   return (
     <div
       role="alert"
+      data-error-code={kind ? (limited ? 'rate_limited' : 'forbidden') : undefined}
       className={cn(
-        'border-danger/30 bg-danger-soft flex items-start gap-3 rounded-lg border text-sm',
+        'flex items-start gap-3 rounded-lg border text-sm',
+        limited ? 'border-warning/30 bg-warning-soft' : 'border-danger/30 bg-danger-soft',
         compact ? 'p-3' : 'p-4',
         className,
       )}
     >
-      <WarningCircleIcon className="text-danger mt-0.5 size-4 shrink-0" weight="fill" />
+      {kind?.icon ?? <WarningCircleIcon className="text-danger mt-0.5 size-4 shrink-0" weight="fill" />}
       <div className="min-w-0 flex-1">
-        <p className="text-foreground font-medium">{title}</p>
+        <p className="text-foreground font-medium">{kind?.title ?? title}</p>
         <p className="text-muted-foreground mt-0.5 break-words">{errorMessage(error)}</p>
       </div>
-      {onRetry && (
+      {onRetry && !isForbidden(error) && (
         <Button variant="outline" size="sm" onClick={onRetry} className="shrink-0">
           <ArrowClockwiseIcon data-icon="inline-start" />
           Retry

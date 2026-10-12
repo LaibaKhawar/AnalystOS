@@ -108,6 +108,19 @@ export function formatRelative(iso: string | null | undefined, now: Date = new D
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date)
 }
 
+/** Time until a future moment: "in 5m", "in 3h", "in 2d", or "due now" once it has passed. */
+export function formatUntil(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return EMPTY
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return EMPTY
+  const diff = (date.getTime() - now.getTime()) / 1000
+  if (diff <= 30) return 'due now'
+  if (diff < 3600) return `in ${Math.max(1, Math.round(diff / 60))}m`
+  if (diff < 86400) return `in ${Math.round(diff / 3600)}h`
+  if (diff < 86400 * 7) return `in ${Math.round(diff / 86400)}d`
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date)
+}
+
 /** Render any table cell value compactly. */
 export function formatCell(value: unknown): string {
   if (value === null || value === undefined) return EMPTY

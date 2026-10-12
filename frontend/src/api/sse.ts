@@ -1,5 +1,5 @@
 import { analysesApi } from './endpoints'
-import { buildUrl, tokenStore, toApiError } from './client'
+import { authFetch, buildUrl, freshAccessToken, toApiError } from './client'
 import type { AnalysisEvent } from './types'
 
 export interface SseMessage {
@@ -114,9 +114,12 @@ export function followAnalysis(analysisId: string, startAfter: number, callbacks
   }
 
   async function streamOnce(): Promise<'ended' | 'dropped'> {
-    const token = tokenStore.get()
-    const response = await fetch(buildUrl(`/analyses/${encodeURIComponent(analysisId)}/stream`, { after: lastId }), {
-      headers: { Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    // Streams outlive short access tokens: renew first when it is about to expire, and on a 401 authFetch
+    // refreshes once (shared with other requests) and reconnects with the rotated token.
+    await freshAccessToken()
+    const path = `/analyses/${encodeURIComponent(analysisId)}/stream`
+    const response = await authFetch(path, buildUrl(path, { after: lastId }), {
+      headers: { Accept: 'text/event-stream' },
       signal,
     })
     if (!response.ok || !response.body) {

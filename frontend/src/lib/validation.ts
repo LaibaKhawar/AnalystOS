@@ -1,5 +1,7 @@
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+export const isEmail = (value: string) => EMAIL.test(value.trim())
+
 export function validateEmail(value: string): string | null {
   if (!value.trim()) return 'Enter your email address.'
   if (!EMAIL.test(value.trim())) return 'Enter a valid email address, like name@company.com.'

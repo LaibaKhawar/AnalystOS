@@ -9,11 +9,11 @@ import { useCancelAnalysis } from '@/hooks/queries/analyses'
 import type { AnalysisStream } from '@/hooks/useAnalysisStream'
 import { ActivityFeed } from './ActivityFeed'
 import { currentPhase } from './events'
-import { planProgress, planRows, planSegments } from './plan'
+import { liveStepStatuses, planProgress, planRows, planSegments } from './plan'
 
 export function RunningView({ analysis, stream }: { analysis: Analysis; stream: AnalysisStream }) {
   const cancel = useCancelAnalysis()
-  const rows = planRows(analysis)
+  const rows = planRows(analysis, liveStepStatuses(stream.events))
   const progress = planProgress(rows)
   const done = rows.filter((r) => r.status === 'done').length
   const label =

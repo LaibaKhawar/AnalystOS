@@ -1,6 +1,7 @@
 import { ListIcon, MagnifyingGlassIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
+import { AlertsBell } from '@/components/alerts/AlertsBell'
 import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -51,7 +52,10 @@ export function AppShell() {
           >
             <Logo />
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-0.5">
+            <AlertsBell />
+            <ThemeToggle />
+          </div>
         </div>
         <SearchButton onClick={() => setPaletteOpen(true)} className="mt-5" />
         <div className="mt-4 flex-1 overflow-y-auto">
@@ -72,6 +76,7 @@ export function AppShell() {
             <Button variant="ghost" size="icon" aria-label="Search" onClick={() => setPaletteOpen(true)}>
               <MagnifyingGlassIcon className="size-4" />
             </Button>
+            <AlertsBell />
             <ThemeToggle />
           </div>
         </header>

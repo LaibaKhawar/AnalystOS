@@ -25,6 +25,10 @@ const ReportView = lazy(() => import('@/pages/ReportView'))
 const Evaluations = lazy(() => import('@/pages/Evaluations'))
 const EvaluationDetail = lazy(() => import('@/pages/EvaluationDetail'))
 const AnalysisRedirect = lazy(() => import('@/pages/AnalysisRedirect'))
+const Schedules = lazy(() => import('@/pages/Schedules'))
+const Alerts = lazy(() => import('@/pages/Alerts'))
+const AdminUsers = lazy(() => import('@/pages/AdminUsers'))
+const EvaluationCompare = lazy(() => import('@/pages/EvaluationCompare'))
 const NotFound = lazy(() => import('@/pages/NotFound'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -84,7 +88,11 @@ function AppRoutes() {
           <Route path="workspace/:conversationId" element={<Workspace />} />
           <Route path="reports" element={<Reports />} />
           <Route path="reports/:reportId" element={<ReportView />} />
+          <Route path="schedules" element={<Schedules />} />
+          <Route path="alerts" element={<Alerts />} />
+          <Route path="admin/users" element={<AdminUsers />} />
           <Route path="evaluations" element={<Evaluations />} />
+          <Route path="evaluations/compare" element={<EvaluationCompare />} />
           <Route path="evaluations/:runId" element={<EvaluationDetail />} />
           <Route path="*" element={<NotFound />} />
         </Route>

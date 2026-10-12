@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ApiError } from '@/api/client'
 import { analysesApi } from '@/api/endpoints'
-import type { Analysis, AnalysisStatus } from '@/api/types'
+import type { Analysis, AnalysisStatus, Report } from '@/api/types'
 import { qk } from './keys'
 
 export const ACTIVE_STATUSES: AnalysisStatus[] = ['queued', 'running']
@@ -91,12 +92,29 @@ function useAnalysisMutation(fn: (id: string) => Promise<Analysis>) {
 export const useCancelAnalysis = () => useAnalysisMutation(analysesApi.cancel)
 export const useRetryAnalysis = () => useAnalysisMutation(analysesApi.retry)
 
+/** The report generated for an analysis, or null when none exists yet (the API answers 404). */
+export function useAnalysisReport(id: string, status: string | undefined) {
+  return useQuery({
+    queryKey: qk.analysisReport(id),
+    queryFn: async (): Promise<Report | null> => {
+      try {
+        return await analysesApi.report(id)
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
+      }
+    },
+    enabled: done(status),
+  })
+}
+
 export function useCreateReport() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (analysisId: string) => analysesApi.createReport(analysisId),
     onSuccess: (report) => {
       client.setQueryData(qk.report(report.id), report)
+      client.setQueryData(qk.analysisReport(report.analysis_id), report)
       void client.invalidateQueries({ queryKey: qk.reports })
       void client.invalidateQueries({ queryKey: qk.dashboard })
     },

@@ -7,7 +7,8 @@ export interface AuthContextValue {
   isLoading: boolean
   login: (input: LoginInput) => Promise<User>
   register: (input: RegisterInput) => Promise<User>
-  logout: () => void
+  /** Revokes the refresh token on the server, then clears the local session. */
+  logout: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

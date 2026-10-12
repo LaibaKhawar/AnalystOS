@@ -1,5 +1,6 @@
 import { request, requestBlob, uploadWithProgress, type UploadHandle } from './client'
 import type {
+  Alert,
   Analysis,
   AnalysisEvent,
   Chart,
@@ -18,13 +19,20 @@ import type {
   Finding,
   LoginInput,
   Message,
+  MetricDefinition,
+  MetricInput,
   RegisterInput,
   Report,
+  Schedule,
+  ScheduleInput,
+  ShareInput,
+  SourceShare,
   SystemStatus,
   Table,
   TablePreview,
   TokenResponse,
   User,
+  UserRole,
 } from './types'
 
 const enc = encodeURIComponent
@@ -57,6 +65,43 @@ export const sourcesApi = {
   preview: (id: string, tableId: string) => request<TablePreview>(`/sources/${enc(id)}/tables/${enc(tableId)}/preview`),
   patchColumn: (id: string, columnId: string, patch: ColumnPatch) =>
     request<Column>(`/sources/${enc(id)}/columns/${enc(columnId)}`, { method: 'PATCH', body: patch }),
+  shares: (id: string) => request<SourceShare[]>(`/sources/${enc(id)}/shares`),
+  /** Creates a share, or changes the role of an existing one for the same email. */
+  share: (id: string, input: ShareInput) =>
+    request<SourceShare>(`/sources/${enc(id)}/shares`, { method: 'POST', body: input }),
+  unshare: (id: string, shareId: string) =>
+    request<void>(`/sources/${enc(id)}/shares/${enc(shareId)}`, { method: 'DELETE' }),
+}
+
+export const metricsApi = {
+  list: (sourceId: string) => request<MetricDefinition[]>(`/sources/${enc(sourceId)}/metrics`),
+  create: (sourceId: string, input: MetricInput) =>
+    request<MetricDefinition>(`/sources/${enc(sourceId)}/metrics`, { method: 'POST', body: input }),
+  update: (sourceId: string, metricId: string, input: MetricInput) =>
+    request<MetricDefinition>(`/sources/${enc(sourceId)}/metrics/${enc(metricId)}`, { method: 'PUT', body: input }),
+  remove: (sourceId: string, metricId: string) =>
+    request<void>(`/sources/${enc(sourceId)}/metrics/${enc(metricId)}`, { method: 'DELETE' }),
+}
+
+export const adminApi = {
+  users: () => request<User[]>('/admin/users'),
+  setRole: (userId: string, role: UserRole) =>
+    request<User>(`/admin/users/${enc(userId)}/role`, { method: 'PATCH', body: { role } }),
+}
+
+export const schedulesApi = {
+  list: () => request<Schedule[]>('/schedules'),
+  create: (input: ScheduleInput) => request<Schedule>('/schedules', { method: 'POST', body: input }),
+  update: (id: string, input: ScheduleInput) =>
+    request<Schedule>(`/schedules/${enc(id)}`, { method: 'PUT', body: input }),
+  remove: (id: string) => request<void>(`/schedules/${enc(id)}`, { method: 'DELETE' }),
+  run: (id: string) => request<Schedule>(`/schedules/${enc(id)}/run`, { method: 'POST' }),
+}
+
+export const alertsApi = {
+  list: (unreadOnly = false) => request<Alert[]>('/alerts', { query: { unread_only: unreadOnly || undefined } }),
+  unreadCount: () => request<{ unread: number }>('/alerts/unread-count'),
+  markRead: (id: string) => request<Alert>(`/alerts/${enc(id)}/read`, { method: 'POST' }),
 }
 
 export const conversationsApi = {
@@ -91,6 +136,8 @@ export const analysesApi = {
     request<ClaimEvidence>(`/analyses/${enc(id)}/claims/${enc(claimId)}/evidence`),
   resultCsvPath: (id: string, resultId: string) => `/analyses/${enc(id)}/results/${enc(resultId)}.csv`,
   createReport: (id: string) => request<Report>(`/analyses/${enc(id)}/report`, { method: 'POST' }),
+  /** The latest report generated for an analysis; 404 when there is none. */
+  report: (id: string) => request<Report>(`/analyses/${enc(id)}/report`),
 }
 
 export const reportsApi = {
