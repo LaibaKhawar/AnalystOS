@@ -27,6 +27,8 @@ from app.agent.persistence import (
 )
 from app.agent.planner import Planner
 from app.agent.schemas import Plan, PlanStep
+from app.agent.scope import ScopeContext, check_plan_scope
+from app.agent.scope import describe as scope_describe
 from app.agent.synthesizer import draft_answer, rewrite_unsupported
 from app.agent.tools.base import ToolError, ToolOutcome, ToolRunner
 from app.agent.tools.registry import build_registry, tool_catalog
@@ -132,6 +134,12 @@ class AnalysisRunner:
             if plan.needs_clarification and plan.clarification_question:
                 return self._clarify(analysis, conversation, plan, call_log, started, events)
 
+            plan, scope_report = self._check_scope(
+                analysis, conversation, plan, planner, schema_text, engine.dialect, events
+            )
+            analysis.plan = plan.model_dump()
+            self.db.commit()
+
             states = [self._add_step(analysis, step, i) for i, step in enumerate(plan.steps)]
             runner = ToolRunner(ctx, self.tools)
             self._execute_steps(states, ctx, runner, planner, schema_text, analysis)
@@ -222,6 +230,7 @@ class AnalysisRunner:
                 "follow_up_questions": report.follow_ups,
                 "chart_ids": [c.id for c in charts],
                 "verification": verification,
+                "scope": scope_report,
                 "failed_steps": failures,
             }
             analysis.summary = report.headline
@@ -442,6 +451,45 @@ class AnalysisRunner:
                 check.original_text = check.original_text or original.text
                 report.claims.insert(report.claims.index(original) + 1, check)
                 report.repaired += 1
+
+    def _check_scope(
+        self,
+        analysis: Analysis,
+        conversation: Conversation,
+        plan: Plan,
+        planner: Planner,
+        schema_text: str,
+        dialect: str,
+        events: EventEmitter,
+    ) -> tuple[Plan, dict[str, Any]]:
+        """Remove restrictions the question did not ask for (one rescope attempt), report what remains."""
+        state = conversation.state or {}
+        history = " ".join(str(turn.get("question", "")) for turn in state.get("history", []))
+        active = {str(f.get("column", "")).lower() for f in state.get("filters", []) if isinstance(f, dict)}
+        ctx = ScopeContext(question=analysis.question, allowed_text=history, active_columns=active)
+        issues = check_plan_scope(plan, ctx, dialect)
+        report: dict[str, Any] = {"issues_found": len(issues), "fixed": 0, "remaining": []}
+        if not issues:
+            return plan, report
+        events.emit(
+            "scope_check",
+            f"Plan narrows the question in {len(issues)} place(s); correcting the scope",
+            issues=[i.as_dict() for i in issues],
+        )
+        try:
+            corrected = planner.rescope(analysis.question, plan, scope_describe(issues), schema_text, self.catalog_text)
+            remaining = check_plan_scope(corrected, ctx, dialect)
+            if corrected.steps and len(remaining) < len(issues):
+                corrected.assumptions = list(dict.fromkeys(plan.assumptions + corrected.assumptions))
+                plan = corrected
+                issues = remaining
+        except LLMError:
+            pass
+        report["fixed"] = report["issues_found"] - len(issues)
+        report["remaining"] = [i.as_dict() for i in issues]
+        for issue in issues:
+            plan.assumptions.append(f"Scope: {issue.detail}")
+        return plan, report
 
     @staticmethod
     def _needs_revision(states: list[StepState]) -> bool:

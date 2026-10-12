@@ -7,7 +7,7 @@ from typing import Any
 
 from app.agent.llm.base import LLMProvider
 from app.agent.llm.structured import CallLog, generate_structured
-from app.agent.prompts import PLANNER_SYSTEM, REPAIR_SYSTEM, REVISER_SYSTEM
+from app.agent.prompts import PLANNER_SYSTEM, REPAIR_SYSTEM, RESCOPE_SYSTEM, REVISER_SYSTEM
 from app.agent.schemas import Plan, PlanStep, Repair, Revision
 from app.agent.tools.base import Tool, ToolError
 
@@ -53,6 +53,20 @@ class Planner:
         if not plan.steps and not plan.needs_clarification:
             plan.steps = [PlanStep(id="s1", title="Inspect the schema", tool="inspect_schema")]
         return plan
+
+    def rescope(self, question: str, plan: Plan, issues_text: str, schema_text: str, catalog: str) -> Plan:
+        messages = [
+            {"role": "system", "content": RESCOPE_SYSTEM + "\n\nTOOLS:\n" + catalog},
+            {
+                "role": "user",
+                "content": (
+                    f"<data>\n{schema_text}\n</data>\n\nQUESTION: {question}\n\n"
+                    f"CURRENT PLAN:\n{json.dumps(plan.model_dump(), default=str)[:6000]}\n\n"
+                    f"OUT-OF-SCOPE RESTRICTIONS:\n{issues_text}\n\nReturn the corrected plan JSON."
+                ),
+            },
+        ]
+        return self.sanitize(generate_structured(self.llm, messages, Plan, purpose="rescope", log=self.log))
 
     def repair(
         self,

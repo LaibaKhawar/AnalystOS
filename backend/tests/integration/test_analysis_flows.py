@@ -573,3 +573,56 @@ def test_profile_tool_marks_sampled_profiles_and_rejects_unknown_columns(  # typ
     findings = client.get(f"/api/analyses/{analysis['id']}/findings", headers=auth).json()
     stat = next(f for f in findings if f["statement"].startswith("Column mrr"))
     assert "estimated from a 500-row sample" in stat["statement"]  # auto-corrected mrrr -> mrr, labelled estimate
+
+
+def test_out_of_scope_filter_is_removed_before_execution(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, agent, upload, ask, data_dir: Path, db
+) -> None:
+    import json as _json
+
+    source = upload(data_dir / "saas_subscriptions.csv")
+    narrowed = "SELECT COUNT(*) AS expanded FROM saas_subscriptions WHERE mrr > initial_mrr AND churn_date IS NULL"
+    correct = "SELECT COUNT(*) AS expanded FROM saas_subscriptions WHERE mrr > initial_mrr"
+    llm = agent.script(
+        plan=[
+            {
+                "goal": "Expanded",
+                "steps": [{"id": "s1", "title": "Count expanded", "tool": "execute_sql", "args": {"sql": narrowed}}],
+            }
+        ],
+        rescope=[
+            {
+                "goal": "Expanded",
+                "steps": [{"id": "s1", "title": "Count expanded", "tool": "execute_sql", "args": {"sql": correct}}],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "expanded=" in t, 1)],
+    )
+    analysis = ask(source["id"], "How many customers expanded, meaning their current mrr is above their initial_mrr?")
+    assert analysis["status"] == "completed"
+    assert "rescope" in llm.purposes()
+    assert analysis["answer"]["scope"] == {"issues_found": 1, "fixed": 1, "remaining": []}
+    executed = [s.sql_original for s in db.query(SQLExecution).filter(SQLExecution.analysis_id == analysis["id"])]
+    assert executed == [correct]
+    truth = _json.loads((data_dir / "ground_truth.json").read_text())["saas_expanded_customers"]
+    assert str(truth) in analysis["answer"]["headline"]
+
+
+def test_unfixed_scope_issue_becomes_visible_assumption(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, agent, upload, ask, data_dir: Path
+) -> None:
+    source = upload(data_dir / "sales.csv")
+    step = {
+        "id": "s1",
+        "title": "Top region",
+        "tool": "aggregate_metric",
+        "args": {"metric": {"column": "revenue"}, "group_by": ["region"], "period": "2026"},
+    }
+    agent.script(
+        plan=[{"goal": "Top region", "steps": [step]}],
+        rescope=[{"goal": "Top region", "steps": [step]}],  # the model keeps the restriction
+        synthesize=[cite_findings(lambda t: "Highest" in t, 1)],
+    )
+    analysis = ask(source["id"], "Which region sells the most?")
+    assert analysis["answer"]["scope"]["remaining"]
+    assert any(a.startswith("Scope:") and "time period" in a for a in analysis["answer"]["assumptions"])
