@@ -1,0 +1,258 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  AnalystOS design tokens
+  - One accent: deep teal. Neutral base: zinc. Off-black / off-white only.
+  - One corner radius: 8px (--radius) for cards, inputs, buttons, popovers.
+    Pills (rounded-full) are reserved for small status badges.
+  - Fonts: Geist + Geist Mono.
+*/
+
+@theme inline {
+  --font-sans: 'Geist Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-surface-2: var(--surface-2);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* One radius system: everything maps to 8px except tiny inner marks. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: 9999px;
+}
+
+:root {
+  --radius: 8px;
+
+  /* Light theme: off-white zinc base, teal-700 accent (5.4:1 on background). */
+  --background: #fafafa;
+  --foreground: #18181b;
+  --surface-2: #f4f4f5;
+  --card: #fdfdfd;
+  --card-foreground: #18181b;
+  --popover: #fdfdfd;
+  --popover-foreground: #18181b;
+  --primary: #0f766e;
+  --primary-foreground: #f0fdfa;
+  --secondary: #f0f0f2;
+  --secondary-foreground: #27272a;
+  --muted: #f0f0f2;
+  --muted-foreground: #5f5f68;
+  --accent: #ececef;
+  --accent-foreground: #18181b;
+  --destructive: #b42318;
+  --border: #e2e2e6;
+  --input: #d9d9de;
+  --ring: #0f766e;
+
+  --brand: #0f766e;
+  --brand-soft: #e6f4f2;
+  --brand-text: #0f6b64;
+  --success: #0f766e;
+  --success-soft: #e6f4f2;
+  --warning: #9a5b00;
+  --warning-soft: #fdf3e1;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+
+  /* Categorical chart slots, validated (CVD + normal vision) on light surface. */
+  --chart-1: #0d9488;
+  --chart-2: #eb6834;
+  --chart-3: #2a78d6;
+  --chart-4: #e87ba4;
+  --chart-5: #4a3aa7;
+  --chart-6: #eda100;
+  --chart-grid: #e7e7ea;
+  --chart-axis: #71717a;
+
+  --sidebar: #f4f4f5;
+  --sidebar-foreground: #27272a;
+  --sidebar-primary: #0f766e;
+  --sidebar-primary-foreground: #f0fdfa;
+  --sidebar-accent: #e8e8eb;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e2e2e6;
+  --sidebar-ring: #0f766e;
+
+  /* Code tokens (shiki css-variables theme). */
+  --shiki-foreground: #27272a;
+  --shiki-background: transparent;
+  --shiki-token-keyword: #0f6b64;
+  --shiki-token-string: #9a4a14;
+  --shiki-token-comment: #71717a;
+  --shiki-token-constant: #3f4fbf;
+  --shiki-token-function: #6b3fa0;
+  --shiki-token-parameter: #27272a;
+  --shiki-token-punctuation: #52525b;
+  --shiki-token-string-expression: #9a4a14;
+  --shiki-token-link: #0f6b64;
+}
+
+.dark {
+  /* Dark theme (default): off-black zinc base, teal-400 accent. */
+  --background: #0d0d0f;
+  --foreground: #ededef;
+  --surface-2: #141417;
+  --card: #131316;
+  --card-foreground: #ededef;
+  --popover: #17171a;
+  --popover-foreground: #ededef;
+  --primary: #2dd4bf;
+  --primary-foreground: #042f2e;
+  --secondary: #1d1d21;
+  --secondary-foreground: #e4e4e7;
+  --muted: #1b1b1f;
+  --muted-foreground: #a1a1aa;
+  --accent: #222227;
+  --accent-foreground: #ededef;
+  --destructive: #f87171;
+  --border: #26262b;
+  --input: #2e2e34;
+  --ring: #2dd4bf;
+
+  --brand: #2dd4bf;
+  --brand-soft: #0f2a28;
+  --brand-text: #5eead4;
+  --success: #5eead4;
+  --success-soft: #0f2a28;
+  --warning: #fbbf24;
+  --warning-soft: #2a2110;
+  --danger: #f87171;
+  --danger-soft: #2c1414;
+
+  --chart-1: #14a394;
+  --chart-2: #d95926;
+  --chart-3: #3987e5;
+  --chart-4: #d55181;
+  --chart-5: #9085e9;
+  --chart-6: #c98500;
+  --chart-grid: #232328;
+  --chart-axis: #8b8b94;
+
+  --sidebar: #101013;
+  --sidebar-foreground: #d4d4d8;
+  --sidebar-primary: #2dd4bf;
+  --sidebar-primary-foreground: #042f2e;
+  --sidebar-accent: #1c1c20;
+  --sidebar-accent-foreground: #ededef;
+  --sidebar-border: #222227;
+  --sidebar-ring: #2dd4bf;
+
+  --shiki-foreground: #e4e4e7;
+  --shiki-token-keyword: #5eead4;
+  --shiki-token-string: #fdba74;
+  --shiki-token-comment: #8b8b94;
+  --shiki-token-constant: #a5b4fc;
+  --shiki-token-function: #d8b4fe;
+  --shiki-token-parameter: #e4e4e7;
+  --shiki-token-punctuation: #a1a1aa;
+  --shiki-token-string-expression: #fdba74;
+  --shiki-token-link: #5eead4;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+  html:not(.dark) {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+    overflow-x: hidden;
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--brand) 30%, transparent);
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Shiki output inherits the code block surface. */
+.code-surface pre {
+  background: transparent !important;
+  margin: 0;
+  padding: 12px 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.code-surface code {
+  display: block;
+  min-width: max-content;
+}
+.code-surface .line {
+  padding: 0 14px;
+}
