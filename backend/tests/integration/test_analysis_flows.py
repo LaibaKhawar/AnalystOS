@@ -626,3 +626,18 @@ def test_unfixed_scope_issue_becomes_visible_assumption(  # type: ignore[no-unty
     analysis = ask(source["id"], "Which region sells the most?")
     assert analysis["answer"]["scope"]["remaining"]
     assert any(a.startswith("Scope:") and "time period" in a for a in analysis["answer"]["assumptions"])
+
+
+def test_fast_path_answers_without_llm_calls(client: TestClient, auth, agent, upload, ask, data_dir: Path) -> None:  # type: ignore[no-untyped-def]
+    import pandas as pd
+
+    source = upload(data_dir / "sales.csv")
+    llm = agent.script()  # no scripted responses: any LLM call would fail the test
+    analysis = ask(source["id"], "What is the average revenue?")
+    assert analysis["status"] == "completed", analysis["error"]
+    assert llm.calls == [] and analysis["llm_calls"] == 0
+    assert analysis["plan"]["fast_path"] is True
+    expected = f"{pd.read_csv(data_dir / 'sales.csv')['revenue'].mean():,.2f}"
+    assert expected in analysis["answer"]["headline"]
+    assert analysis["answer"]["verification"]["verified"] >= 1
+    assert analysis["answer"]["verification"]["final_unsupported_rate"] == 0.0

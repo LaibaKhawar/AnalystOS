@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.agent import fastpath
 from app.agent.context import EventEmitter, ToolContext, column_guide, render_metrics, render_schema
 from app.agent.llm.base import LLMProvider
 from app.agent.llm.pricing import estimate_cost
@@ -119,26 +120,34 @@ class AnalysisRunner:
             conversation_text = render_conversation(conversation, analysis.id)
             planner = Planner(self.llm, self.tools, call_log, self.settings.agent_max_steps)
 
-            events.emit("status", "Planning the analysis", phase="planning")
-            plan = planner.plan(
-                analysis.question,
-                schema_text,
-                self.catalog_text,
-                conversation_text,
-                engine.dialect,
-                column_guide(source),
-            )
-            analysis.plan = plan.model_dump()
+            fast = fastpath.match(analysis.question, source) if not conversation_text else None
+            if fast is not None:
+                events.emit("status", "Answering from the precomputed dataset profile", phase="planning")
+                plan = fast.plan()
+            else:
+                events.emit("status", "Planning the analysis", phase="planning")
+                plan = planner.plan(
+                    analysis.question,
+                    schema_text,
+                    self.catalog_text,
+                    conversation_text,
+                    engine.dialect,
+                    column_guide(source),
+                )
+            analysis.plan = {**plan.model_dump(), "fast_path": fast is not None}
             self.db.commit()
             events.emit("plan", f"Plan with {len(plan.steps)} steps", plan=analysis.plan)
 
             if plan.needs_clarification and plan.clarification_question:
                 return self._clarify(analysis, conversation, plan, call_log, started, events)
 
-            plan, scope_report = self._check_scope(
-                analysis, conversation, plan, planner, schema_text, engine.dialect, events
-            )
-            analysis.plan = plan.model_dump()
+            if fast is None:
+                plan, scope_report = self._check_scope(
+                    analysis, conversation, plan, planner, schema_text, engine.dialect, events
+                )
+            else:
+                scope_report = {"issues_found": 0, "fixed": 0, "remaining": []}
+            analysis.plan = {**plan.model_dump(), "fast_path": fast is not None}
             self.db.commit()
 
             states = [self._add_step(analysis, step, i) for i, step in enumerate(plan.steps)]
@@ -148,7 +157,8 @@ class AnalysisRunner:
             # Observe -> revise (bounded).
             replans = 0
             while (
-                replans < self.settings.agent_max_replans
+                fast is None
+                and replans < self.settings.agent_max_replans
                 and len(states) < self.settings.agent_max_steps
                 and self._needs_revision(states)
             ):
@@ -183,7 +193,8 @@ class AnalysisRunner:
                 self.db.commit()
                 self._execute_steps(new_states, ctx, runner, planner, schema_text, analysis)
 
-            self._ensure_chart(ctx, runner, states)
+            if fast is None:
+                self._ensure_chart(ctx, runner, states)
 
             charts = self.db.query(Chart).filter(Chart.analysis_id == analysis.id).all()
             numeric = len(ctx.findings)
@@ -193,16 +204,21 @@ class AnalysisRunner:
                 for s in states
                 if s.outcome and not s.outcome.ok and s.outcome.error
             ]
-            draft = draft_answer(
-                self.llm,
-                call_log,
-                question=analysis.question,
-                goal=plan.goal,
-                assumptions=plan.assumptions,
-                findings=ctx.findings,
-                charts=charts,
-                failures=failures,
-                conversation=conversation_text,
+            fast_ok = fast is not None and all(s.outcome and s.outcome.ok for s in states)
+            draft = (
+                fastpath.draft_from_profile(fast, ctx.findings)
+                if fast is not None and fast_ok
+                else draft_answer(
+                    self.llm,
+                    call_log,
+                    question=analysis.question,
+                    goal=plan.goal,
+                    assumptions=plan.assumptions,
+                    findings=ctx.findings,
+                    charts=charts,
+                    failures=failures,
+                    conversation=conversation_text,
+                )
             )
             draft_dict = draft.model_dump()
             sentence_count = sum(len(draft_dict[k]) for k in ("summary", "facts", "interpretations", "recommendations"))
