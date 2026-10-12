@@ -6,7 +6,8 @@ Every number in the drafted answer must be traceable to a Finding (a tool-comput
   * derived match: a percentage that recomputes exactly from two values of the cited findings
     (percent change or share); the formula is recorded as evidence.
 A finding only supports a sentence if the sentence names one of the finding's entities (segment values,
-filters) and does not contradict its periods (quarters / months).
+filters) and does not contradict its periods (years / quarters / months). A sentence naming a year needs a finding
+restricted to that year (by its periods or statement), unless the whole dataset lies within the named years.
 Unsupported sentences are removed (kept in the audit trail), causal wording in facts is moved into
 interpretations and marked as a hypothesis, and the LLM never gets to "fill in" missing values.
 """
@@ -198,6 +199,27 @@ def _periods_ok(sentence: str, finding: Finding) -> bool:
     return True
 
 
+_YEAR = re.compile(r"(?<![\d.,$€£¥])((?:19|20)\d{2})(?![\d%]|[.,]\d)")
+
+
+def _years_ok(sentence: str, finding: Finding, data_years: set[str] | None) -> bool:
+    """A sentence about "2026" cannot be backed by a finding computed over 2025-2026 (or over another year)."""
+    years = set(_YEAR.findall(sentence))
+    if not years:
+        return True
+    periods = [str(p) for p in (finding.payload or {}).get("periods", []) if p]
+    finding_years = {p[:4] for p in periods if re.match(r"(?:19|20)\d{2}", p)}
+    if finding_years:
+        return bool(years & finding_years)
+    payload = finding.payload or {}
+    # Model-written SQL/Python: the code, not the step's own description, says which rows were used.
+    basis = str(payload["scope_text"]) if "scope_text" in payload else (finding.statement or "")
+    if any(year in basis for year in years):
+        return True  # restricted by a filter the tool's statement (or the executed code) names
+    # An unrestricted finding covers the whole dataset: fine only when all of the data lies in the named years.
+    return data_years is None or (bool(data_years) and data_years <= years)
+
+
 def _derived(token: NumberToken, findings: list[Finding]) -> Match | None:
     if not token.is_pct:
         return None
@@ -236,6 +258,7 @@ def verify_sentence(
     kind: str,
     exempt_phrases: list[str],
     known_entities: set[str] | None = None,
+    data_years: set[str] | None = None,
 ) -> ClaimCheck:
     if known_entities is None:
         known_entities = entities_of(findings.values())
@@ -248,7 +271,11 @@ def verify_sentence(
     for token in tokens:
         match = None
         for scope in (cited, pool):
-            candidates = [f for f in scope if _entity_ok(text, f, known_entities) and _periods_ok(text, f)]
+            candidates = [
+                f
+                for f in scope
+                if _entity_ok(text, f, known_entities) and _periods_ok(text, f) and _years_ok(text, f, data_years)
+            ]
             for finding in candidates:
                 for key, value in _numeric_values(finding).items():
                     if _close(token, value):
@@ -327,8 +354,13 @@ def verify_answer(
     *,
     exempt_phrases: list[str],
     known_entities: set[str] | None = None,
+    data_years: set[str] | None = None,
 ) -> VerificationReport:
-    """Verify a drafted answer. known_entities: category values of the dataset (plus finding entities)."""
+    """Verify a drafted answer.
+
+    known_entities: category values of the dataset (plus finding entities); data_years: calendar years the
+    dataset's date columns span (None when unknown, which disables the whole-dataset year check).
+    """
     by_label = {f.label.upper(): f for f in findings}
     known = {e.lower() for e in (known_entities or set()) if len(e) >= 3} | entities_of(findings)
     claims: list[ClaimCheck] = []
@@ -355,6 +387,7 @@ def verify_answer(
                         kind=kind,
                         exempt_phrases=exempt_phrases,
                         known_entities=known,
+                        data_years=data_years,
                     )
                 )
 
@@ -366,7 +399,14 @@ def verify_answer(
     headline = str(draft.get("headline") or "").strip()
     head_check = (
         verify_sentence(
-            headline, [], by_label, section="headline", kind="fact", exempt_phrases=exempt_phrases, known_entities=known
+            headline,
+            [],
+            by_label,
+            section="headline",
+            kind="fact",
+            exempt_phrases=exempt_phrases,
+            known_entities=known,
+            data_years=data_years,
         )
         if headline
         else None

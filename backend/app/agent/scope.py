@@ -7,8 +7,9 @@ window nobody asked for ("customers who expanded" silently becomes "customers wh
 This module finds such restrictions deterministically before any tool runs:
   * filters (tool `filters` arguments and WHERE/HAVING conditions in model-written SQL) whose column and value
     are not mentioned in the question or the active conversation context,
-  * period restrictions when the question contains no time reference at all.
-The orchestrator asks the planner to remove them once; anything left is reported to the user as an assumption.
+  * period restrictions when the question contains no time reference at all,
+and the opposite mistake: an explicit period in the question ("in 2026", "Q2", "March") that no step applies.
+The orchestrator asks the planner to fix them once; anything left is reported to the user as an assumption.
 """
 
 from __future__ import annotations
@@ -55,12 +56,31 @@ TIME_WORDS = re.compile(
     re.IGNORECASE,
 )
 PERIOD_KEYS = ("period", "current_period", "previous_period")
+# Explicit periods only ("may" is left out: it is far more often a verb).
+_YEAR = re.compile(r"(?<![\d.,$])((?:19|20)\d{2})(?![\d%])")
+EXPLICIT_PERIOD = re.compile(
+    r"(?<![\d.,$])(?:19|20)\d{2}(?![\d%])|\bq[1-4]\b|\bh[12]\b|"
+    r"\b(?:january|february|march|april|june|july|august|september|october|november|december)\b",
+    re.IGNORECASE,
+)
+_DATE_LITERAL = re.compile(r"'\d{4}-\d{2}(?:-\d{2})?'|\b(?:year|quarter|month|date_trunc|strftime|extract)\s*\(", re.I)
+_TIME_COLUMN = re.compile(r"date|time|month|year|quarter|week|day|period|_at$|_on$", re.IGNORECASE)
+NON_COMPUTING_TOOLS = {
+    "list_tables",
+    "describe_table",
+    "inspect_schema",
+    "profile_dataset",
+    "create_chart",
+    "retrieve_evidence",
+    "retrieve_previous_analysis",
+    "generate_report",
+}
 
 
 @dataclass
 class ScopeIssue:
     step_id: str
-    kind: str  # filter | period
+    kind: str  # filter | period | missing_period
     detail: str
     column: str | None = None
 
@@ -73,6 +93,7 @@ class ScopeContext:
     question: str
     allowed_text: str = ""  # earlier questions + active filters (follow-ups may refer to them)
     active_columns: set[str] = field(default_factory=set)
+    data_years: set[str] | None = None  # years the data spans: "in 2026" needs no filter when all data is 2026
 
     @property
     def text(self) -> str:
@@ -174,7 +195,39 @@ def check_plan_scope(plan: Plan, ctx: ScopeContext, dialect: str) -> list[ScopeI
                     f"'{step.title}' limits the analysis to {labels}, but the question does not mention a time period",
                 )
             )
+    gap = missing_period(plan, ctx)
+    if gap:
+        issues.append(gap)
     return issues
+
+
+def _restricts_time(step: PlanStep) -> bool:
+    args = step.args or {}
+    if any(args.get(key) for key in (*PERIOD_KEYS, "time_grain", "start", "end", "start_date", "end_date")):
+        return True
+    for flt in args.get("filters") or []:
+        if isinstance(flt, dict) and _TIME_COLUMN.search(str(flt.get("column", ""))):
+            return True
+    code = " ".join(str(args.get(key) or "") for key in ("sql", "code"))
+    return bool(code and (_DATE_LITERAL.search(code) or _YEAR.search(code)))
+
+
+def missing_period(plan: Plan, ctx: ScopeContext) -> ScopeIssue | None:
+    """The question names a period ("in 2026", "Q2", "March") but no step restricts or groups by time."""
+    named = [m.group(0) for m in EXPLICIT_PERIOD.finditer(ctx.question)]
+    if not named:
+        return None
+    years = {n for n in named if _YEAR.fullmatch(n)}
+    if len(years) == len(named) and ctx.data_years and ctx.data_years <= years:
+        return None  # all of the data lies in the named year(s)
+    computing = [s for s in plan.steps if s.tool not in NON_COMPUTING_TOOLS]
+    if not computing or any(_restricts_time(s) for s in plan.steps):
+        return None
+    step = computing[0]
+    shown = ", ".join(dict.fromkeys(named))
+    return ScopeIssue(
+        step.id, "missing_period", f"the question asks about {shown}, but no step restricts the data to that period"
+    )
 
 
 def describe(issues: list[ScopeIssue]) -> str:

@@ -64,7 +64,7 @@ class Planner:
                 "content": (
                     f"<data>\n{schema_text}\n</data>\n\nQUESTION: {question}\n\n"
                     f"CURRENT PLAN:\n{json.dumps(plan.model_dump(), default=str)[:6000]}\n\n"
-                    f"OUT-OF-SCOPE RESTRICTIONS:\n{issues_text}\n\nReturn the corrected plan JSON."
+                    f"SCOPE ISSUES:\n{issues_text}\n\nReturn the corrected plan JSON."
                 ),
             },
         ]

@@ -130,3 +130,69 @@ def test_headline_is_kept_as_an_auditable_claim() -> None:
     draft = {"headline": "Lahore revenue fell 17.3% in Q3", "summary": [], "facts": []}
     report = verify_answer(draft, [F1, F2], exempt_phrases=[])
     assert report.claims[0].section == "headline" and report.claims[0].status == "verified"
+
+
+AOV_ALL_TIME = Finding(
+    id="id_F3",
+    label="F3",
+    kind="value",
+    statement="Saved metric Average order value where customer_segment = Enterprise: 1,502.44",
+    values={"value": 1502.44},
+    payload={"entities": ["Enterprise"], "periods": []},
+)
+PROFIT_2025 = Finding(
+    id="id_F4",
+    label="F4",
+    kind="value",
+    statement="Compute total gross profit for 2025: gross_profit=6,627,943.50",
+    values={"gross_profit": 6627943.5},
+    payload={"entities": [], "periods": []},
+)
+COUNT_2025 = _finding("F5", {"value": 15182}, periods=["2025-01-01"])
+SQL_NO_YEAR = Finding(
+    id="id_F6",
+    label="F6",
+    kind="value",
+    statement="Compute total gross profit for 2025: gross_profit=6,627,943.50",  # model-written purpose
+    values={"gross_profit": 6627943.5},
+    payload={"entities": [], "periods": [], "scope_text": "SELECT SUM(revenue) - SUM(cost) FROM sales"},
+)
+SQL_2025 = Finding(
+    id="id_F7",
+    label="F7",
+    kind="value",
+    statement="Gross profit: gross_profit=3,877,729.42",
+    values={"gross_profit": 3877729.42},
+    payload={
+        "entities": [],
+        "periods": [],
+        "scope_text": "SELECT SUM(revenue) - SUM(cost) FROM sales WHERE date >= '2025-01-01' AND date < '2026-01-01'",
+    },
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "finding", "data_years", "status"),
+    [
+        # all-time finding cannot back a claim about one year of a multi-year dataset
+        ("Enterprise orders averaged 1,502.44 in 2026.", AOV_ALL_TIME, {"2025", "2026"}, "removed"),
+        ("Enterprise orders averaged 1,502.44.", AOV_ALL_TIME, {"2025", "2026"}, "verified"),
+        # ... unless the whole dataset lies in that year, or the date range is unknown
+        ("Enterprise orders averaged 1,502.44 in 2026.", AOV_ALL_TIME, {"2026"}, "verified"),
+        ("Enterprise orders averaged 1,502.44 in 2026.", AOV_ALL_TIME, None, "verified"),
+        # restriction named in the finding's statement or periods
+        ("Gross profit in 2025 was 6,627,943.50.", PROFIT_2025, {"2025", "2026"}, "verified"),
+        ("Gross profit in 2026 was 6,627,943.50.", PROFIT_2025, {"2025", "2026"}, "removed"),
+        ("There were 15,182 orders in 2025.", COUNT_2025, {"2025", "2026"}, "verified"),
+        ("There were 15,182 orders in 2026.", COUNT_2025, {"2025", "2026"}, "removed"),
+        # model-written SQL: the executed query decides, not the step description
+        ("Gross profit in 2025 was 6,627,943.50.", SQL_NO_YEAR, {"2025", "2026"}, "removed"),
+        ("Gross profit in 2025 was 3,877,729.42.", SQL_2025, {"2025", "2026"}, "verified"),
+    ],
+)
+def test_years_in_claims_must_match_the_findings_period(
+    text: str, finding: Finding, data_years: set[str] | None, status: str
+) -> None:
+    draft = {"facts": [{"text": text, "citations": [finding.label]}]}
+    report = verify_answer(draft, [finding], exempt_phrases=[], known_entities={"Enterprise"}, data_years=data_years)
+    assert report.claims[0].status == status

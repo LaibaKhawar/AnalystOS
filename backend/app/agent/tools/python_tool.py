@@ -109,9 +109,9 @@ class ExecutePython(Tool):
                 + (f"\ncharts saved: {len(artifacts)}" if artifacts else ""),
                 data={"row_count": payload.get("row_count"), "artifacts": artifacts},
                 result_table_id=stored.id,
-                findings=rows_findings(args.purpose or "Python result", names, rows),
+                findings=_with_scope(rows_findings(args.purpose or "Python result", names, rows), args.code),
             )
-        findings = _scalar_findings(args.purpose or "Python result", payload)
+        findings = _with_scope(_scalar_findings(args.purpose or "Python result", payload), args.code)
         stored = ctx.save_result_table(
             args.purpose or "Python result",
             [{"name": "key", "type": "str"}, {"name": "value", "type": "any"}],
@@ -174,6 +174,13 @@ def _flatten(payload: dict[str, Any]) -> list[list[Any]]:
     if isinstance(value, list):
         return [[str(i), v if not isinstance(v, dict | list) else str(v)[:500]] for i, v in enumerate(value)]
     return [["result", value]]
+
+
+def _with_scope(findings: list[FindingDraft], code: str) -> list[FindingDraft]:
+    """Record the code behind each finding: the verifier checks named periods against it, not the purpose text."""
+    for finding in findings:
+        finding.payload["scope_text"] = code
+    return findings
 
 
 def _scalar_findings(name: str, payload: dict[str, Any]) -> list[FindingDraft]:

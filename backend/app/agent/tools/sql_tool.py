@@ -40,6 +40,8 @@ class ExecuteSQL(Tool):
             },
         )
         findings = rows_findings(args.purpose or "Query result", names, result.rows, limit=30)
+        for finding in findings:  # the purpose text is model-written; the verifier checks periods against the SQL
+            finding.payload["scope_text"] = result.executed_sql
         truncated = " (truncated)" if result.truncated else ""
         summary = f"result_id={table.id} rows={result.row_count}{truncated}\n{compact_table(names, result.rows)}"
         if result.row_count == 0:

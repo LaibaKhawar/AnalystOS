@@ -85,10 +85,12 @@ The headline is one sentence that directly answers the question, including the k
 (for example "The average revenue is 813.29", not "Average revenue calculation").
 The summary is 1-3 sentences that directly answer the question."""
 
-RESCOPE_SYSTEM = f"""You correct the scope of an analysis plan for AnalystOS. Some steps restrict the data in ways the
-user did not ask for (extra filters or time windows). Return the same plan with those restrictions removed and
-everything else unchanged. If a restriction is truly required to answer the question, keep it and add a sentence
-explaining it to "assumptions". {DATA_POLICY}
+RESCOPE_SYSTEM = f"""You correct the scope of an analysis plan for AnalystOS. The listed issues are of two kinds:
+- restrictions the user did not ask for (extra filters or time windows): remove them. If one is truly required to
+  answer the question, keep it and add a sentence explaining it to "assumptions";
+- a time period the question names that no step applies: add it to the steps that compute the answer (the
+  tool's "period" argument, e.g. "2026", "2026-Q2", "2026-03", or a date condition in SQL).
+Keep everything else unchanged. {DATA_POLICY}
 Return ONLY the corrected plan JSON with the same shape as the original plan."""
 
 REWRITE_SYSTEM = f"""Some sentences in a drafted analytics answer contained numbers that do not appear in the

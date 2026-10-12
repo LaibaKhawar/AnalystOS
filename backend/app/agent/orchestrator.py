@@ -151,7 +151,7 @@ class AnalysisRunner:
 
             if fast is None:
                 plan, scope_report = self._check_scope(
-                    analysis, conversation, plan, planner, schema_text, engine.dialect, events
+                    analysis, conversation, plan, planner, schema_text, engine.dialect, events, ctx
                 )
             else:
                 scope_report = {"issues_found": 0, "fixed": 0, "remaining": []}
@@ -233,7 +233,11 @@ class AnalysisRunner:
             events.emit("status", f"Verifying {sentence_count} claims against computed results", phase="verification")
             exempt = self._exempt_phrases(analysis.question, ctx)
             report = verify_answer(
-                draft_dict, ctx.findings, exempt_phrases=exempt, known_entities=self._known_entities(ctx)
+                draft_dict,
+                ctx.findings,
+                exempt_phrases=exempt,
+                known_entities=self._known_entities(ctx),
+                data_years=self._data_years(ctx),
             )
             self._repair_unsupported(report, ctx, call_log, exempt, events)
             persist_claims(self.db, analysis, report, ctx.findings)
@@ -470,6 +474,7 @@ class AnalysisRunner:
                 kind=original.kind,
                 exempt_phrases=exempt,
                 known_entities=self._known_entities(ctx),
+                data_years=self._data_years(ctx),
             )
             if check.status in {"verified", "qualified"}:
                 check.notes.append(f"rewritten after verification rejected: {original.text[:200]}")
@@ -486,19 +491,25 @@ class AnalysisRunner:
         schema_text: str,
         dialect: str,
         events: EventEmitter,
+        tool_ctx: ToolContext,
     ) -> tuple[Plan, dict[str, Any]]:
         """Remove restrictions the question did not ask for (one rescope attempt), report what remains."""
         state = conversation.state or {}
         history = " ".join(str(turn.get("question", "")) for turn in state.get("history", []))
         active = {str(f.get("column", "")).lower() for f in state.get("filters", []) if isinstance(f, dict)}
-        ctx = ScopeContext(question=analysis.question, allowed_text=history, active_columns=active)
+        ctx = ScopeContext(
+            question=analysis.question,
+            allowed_text=history,
+            active_columns=active,
+            data_years=self._data_years(tool_ctx),
+        )
         issues = check_plan_scope(plan, ctx, dialect)
         report: dict[str, Any] = {"issues_found": len(issues), "fixed": 0, "remaining": []}
         if not issues:
             return plan, report
         events.emit(
             "scope_check",
-            f"Plan narrows the question in {len(issues)} place(s); correcting the scope",
+            f"Plan scope differs from the question in {len(issues)} place(s); correcting it",
             issues=[i.as_dict() for i in issues],
         )
         try:
@@ -582,6 +593,20 @@ class AnalysisRunner:
                 if column.role == "dimension" and not column.is_pii:
                     values.update(str(v["value"]) for v in (column.stats or {}).get("top_values", []) if v.get("value"))
         return values
+
+    @staticmethod
+    def _data_years(ctx: ToolContext) -> set[str] | None:
+        """Calendar years spanned by the source's date columns (None when there are none or their range is unknown)."""
+        years: set[str] = set()
+        for table in ctx.tables:
+            for column in table.columns:
+                stats = column.stats or {}
+                if column.role != "time" or not stats.get("min") or not stats.get("max"):
+                    continue
+                low, high = str(stats["min"])[:4], str(stats["max"])[:4]
+                if low.isdigit() and high.isdigit() and int(low) <= int(high):
+                    years.update(str(y) for y in range(int(low), int(high) + 1))
+        return years or None
 
     def _exempt_phrases(self, question: str, ctx: ToolContext) -> list[str]:
         phrases: list[str] = []
