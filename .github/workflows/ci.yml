@@ -46,14 +46,16 @@ jobs:
       - name: Verify migrations apply cleanly
         env:
           DATABASE_URL: postgresql+psycopg://analystos:analystos@localhost:5434/analystos_test
-          SECRET_KEY: ci-secret-key-0123456789abcdef
-          ENCRYPTION_KEY: 2LZ0pPbk3cTOz0pMtk2s8eQ6k6DcO_2-6E0FEb3OQ0Y=
-        run: alembic upgrade head && alembic downgrade base
+        run: |
+          export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+          export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          alembic upgrade head && alembic downgrade base
       - run: pytest -q --cov=app --cov-report=term-missing:skip-covered
       - name: Benchmark data is reproducible
         run: |
           python -m evals.datasets.generate > /dev/null
-          git diff --exit-code -- evals/data
+          # CSVs and ground truth must be byte-identical (xlsx files embed creation timestamps)
+          git diff --exit-code -- 'evals/data/*.csv' evals/data/ground_truth.json
 
   backend-security:
     name: Backend security scan
@@ -88,8 +90,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
-      - uses: gitleaks/gitleaks-action@v2
-        env: {GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Scan full history with gitleaks
+        run: docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.24.3 git /repo --redact --exit-code 1
 
   docker:
     name: Container images build
