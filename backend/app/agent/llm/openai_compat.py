@@ -54,7 +54,7 @@ class OpenAICompatibleProvider(LLMProvider):
     ) -> LLMResponse:
         url, headers = self._endpoint()
         msgs = [dict(m) for m in messages]
-        if self.settings.llm_disable_thinking and self.model.lower().startswith("qwen3") and msgs:
+        if self.settings.llm_disable_thinking and "qwen3" in self.model.lower() and msgs:
             msgs[-1]["content"] = f"{msgs[-1]['content']}\n/no_think"
         body: dict[str, Any] = {
             "model": self.model,

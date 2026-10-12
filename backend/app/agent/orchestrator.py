@@ -253,7 +253,11 @@ class AnalysisRunner:
         except Exception as exc:
             self.db.rollback()
             analysis = self.db.get(Analysis, analysis_id) or analysis
-            message = exc.message if isinstance(exc, AnalystError) else "The analysis failed unexpectedly"
+            message = (
+                exc.message
+                if isinstance(exc, AnalystError)
+                else f"The analysis failed unexpectedly ({exc.__class__.__name__})"
+            )
             if isinstance(exc, LLMError):
                 message = f"The language model could not complete the analysis: {exc.message}"
             if not isinstance(exc, AnalystError):
@@ -550,6 +554,8 @@ class AnalysisRunner:
             analysis.cost_usd = estimate_cost(
                 analysis.model or "", call_log.usage.input_tokens, call_log.usage.output_tokens
             )
+            if self.settings.llm_cost_per_gpu_second > 0:
+                analysis.cost_usd = round(call_log.latency_ms / 1000 * self.settings.llm_cost_per_gpu_second, 6)
         except Exception:  # cost accounting must never break finishing an analysis
             log.warning("cost_estimation_failed", model=analysis.model)
             analysis.cost_usd = 0.0

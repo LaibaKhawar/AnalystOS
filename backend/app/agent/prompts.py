@@ -22,6 +22,9 @@ Rules:
 - Periods use labels like "2026-Q3", "2026-07", "2026", "2026-01-01..2026-03-31", or "latest_quarter",
   "previous_quarter", "latest_month", "previous_month". Check them against the date range in the schema.
 - Include at least one create_chart step when a visual helps (time trend -> line, categories -> bar).
+- Do not add filters, exclusions or conditions the question did not ask for (for example excluding churned
+  customers or a date range). If one seems necessary, keep it out of the main computation and list it in
+  "assumptions" instead.
 - Keep plans between 2 and 8 steps. Do not add steps that do not serve the question.
 - If the question is ambiguous in a way that would change the answer (unknown metric, unclear time range
   with no sensible default, a follow-up whose referent is unclear), set needs_clarification=true and ask ONE

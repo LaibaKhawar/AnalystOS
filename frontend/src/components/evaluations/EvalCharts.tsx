@@ -38,7 +38,7 @@ export function LatencyChart({ data }: { data: { label: string; count: number }[
         <XAxis {...AXIS} dataKey="label" />
         <YAxis {...AXIS} axisLine={false} width={32} allowDecimals={false} />
         <Tooltip content={<ChartTooltip labelKey="from" />} cursor={{ fill: 'var(--muted)', opacity: 0.5 }} />
-        <Bar dataKey="count" name="cases" fill="var(--chart-3)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+        <Bar dataKey="count" name="cases" fill="var(--chart-1)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   )

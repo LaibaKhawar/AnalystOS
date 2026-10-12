@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     llm_disable_thinking: bool = True
     azure_api_version: str = "2024-08-01-preview"
     pricing_file: Path | None = None
+    # Self-hosted GPU endpoints (Modal, vLLM on your own GPUs) are billed by time, not tokens. When set, the
+    # analysis cost is estimated as LLM wall-clock seconds x this rate (e.g. 0.000542 for an L40S on Modal).
+    llm_cost_per_gpu_second: float = 0.0
 
     embedding_base_url: str | None = None
     embedding_api_key: str | None = None
