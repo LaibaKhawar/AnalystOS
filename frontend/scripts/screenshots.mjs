@@ -76,4 +76,32 @@ if (run) {
   await shot('evaluations')
 }
 
+await page.goto(`${APP}/schedules`)
+await page.waitForLoadState('networkidle')
+await shot('schedules')
+
+// Monitoring stack (docker-compose.observability.yml), when it is running.
+const GRAFANA = process.env.GRAFANA_URL
+if (GRAFANA) {
+  const grafana = await context.newPage()
+  await grafana.goto(`${GRAFANA}/d/analystos/analystos?orgId=1&from=now-3h&to=now&kiosk`)
+  await grafana.waitForTimeout(6000)
+  await grafana.screenshot({ path: path.join(OUT, 'grafana.png') })
+  console.log('saved grafana')
+}
+const JAEGER = process.env.JAEGER_URL
+if (JAEGER) {
+  const traces = await fetch(
+    `${JAEGER}/api/traces?service=analystos-worker&operation=analysis&limit=1&lookback=6h`,
+  ).then((r) => r.json())
+  const traceId = traces.data?.[0]?.traceID
+  if (traceId) {
+    const jaeger = await context.newPage()
+    await jaeger.goto(`${JAEGER}/trace/${traceId}`)
+    await jaeger.waitForTimeout(4000)
+    await jaeger.screenshot({ path: path.join(OUT, 'trace.png') })
+    console.log('saved trace')
+  }
+}
+
 await browser.close()
