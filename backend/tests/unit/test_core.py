@@ -100,3 +100,15 @@ def test_hosted_postgres_urls_get_the_psycopg_driver(
 
     monkeypatch.setenv("DATABASE_URL", given)
     assert Settings().database_url == expected  # type: ignore[call-arg]
+
+
+def test_result_rows_are_json_safe() -> None:
+    import json
+
+    import numpy as np
+
+    from app.agent.context import json_rows
+
+    rows = json_rows([[float("nan"), np.float64("nan"), np.int64(3), float("inf"), "Enterprise", None]])
+    assert rows == [[None, None, 3, None, "Enterprise", None]]
+    json.dumps(rows, allow_nan=False)  # what Postgres JSONB accepts

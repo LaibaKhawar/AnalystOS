@@ -137,7 +137,7 @@ class ToolContext:
             tool_execution_id=self.current_execution_id,
             name=name[:200],
             columns=columns,
-            rows=rows[:5000],
+            rows=json_rows(rows[:5000]),
             row_count=len(rows),
             truncated=truncated,
             source=source or {},
@@ -181,6 +181,16 @@ class ToolContext:
             labels.append(label)
         self.db.flush()
         return labels
+
+
+def json_rows(rows: list[list[Any]]) -> list[list[Any]]:
+    """Rows as stored in JSONB: numpy/pandas scalars become Python values, NaN/inf become null.
+
+    Postgres rejects NaN in JSON, and a failed flush would roll back the whole analysis.
+    """
+    from app.services.datasources.base import to_jsonable
+
+    return [[to_jsonable(value) for value in row] for row in rows]
 
 
 def _clean_values(values: dict[str, Any]) -> dict[str, Any]:
