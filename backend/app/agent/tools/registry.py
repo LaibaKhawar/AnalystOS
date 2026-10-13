@@ -44,8 +44,12 @@ ALL_TOOLS: list[type[Tool]] = [
 ]
 
 
-def build_registry() -> dict[str, Tool]:
-    return {tool.name: tool() for tool in ALL_TOOLS}
+def build_registry(*, python: bool = True) -> dict[str, Tool]:
+    """All tools; without a sandbox (SANDBOX_ENABLED=false) the Python tool is left out so it is never planned."""
+    tools = {tool.name: tool() for tool in ALL_TOOLS}
+    if not python:
+        tools.pop("execute_python", None)
+    return tools
 
 
 def tool_catalog(tools: dict[str, Tool]) -> str:

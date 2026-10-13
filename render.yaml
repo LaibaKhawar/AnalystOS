@@ -1,12 +1,11 @@
-# Render Blueprint: a public demo of AnalystOS (New > Blueprint, pick this repo).
+# Render Blueprint for the AnalystOS backend on Render's free plan (no card needed). The web app is served by
+# Vercel (frontend/vercel.json rewrites /api here); the model is any OpenAI-compatible API (Groq's free tier by
+# default). Fill the `sync: false` values in the Render dashboard, or create the services through the Render API.
 #
-# Free-tier friendly layout: analyses run inside the API process (no Celery worker), generated Python runs in
-# Modal sandboxes (Render has no Docker socket), and the LLM is any OpenAI-compatible endpoint.
-# Fill the `sync: false` values in the Render dashboard on first deploy. See docs/deployment.md.
-#
-# Limits of the free plan: the API sleeps when idle (first request takes ~1 minute), and its disk is ephemeral,
-# so datasets uploaded by visitors disappear on restart (the demo datasets are re-seeded at every start).
-# Schedules need the `beat` and `worker` services, which are paid background workers; they are left out here.
+# Free-plan limits: the service sleeps after 15 idle minutes (the next request waits for it to start), it has 512 MB
+# of memory, its disk is ephemeral (the demo datasets are re-seeded at every start), and the free database expires
+# after 30 days. There is no Docker daemon or isolation layer for generated Python, so the Python tool is disabled
+# (SANDBOX_ENABLED=false); SQL, statistics, anomaly detection, charts, verification and reports all work.
 
 databases:
   - name: analystos-db
@@ -32,10 +31,6 @@ services:
       && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'"
     healthCheckPath: /api/health
     envVars:
-      - key: PORT
-        value: "8000"
-      - key: INSTALL_MODAL  # build arg
-        value: "true"
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
@@ -48,30 +43,21 @@ services:
         sync: false
       - key: RUN_ANALYSES_INLINE
         value: "true"
-      - key: SANDBOX_BACKEND
-        value: modal
-      - key: MODAL_TOKEN_ID
-        sync: false
-      - key: MODAL_TOKEN_SECRET
-        sync: false
-      - key: LLM_BASE_URL  # e.g. https://api.openai.com/v1, or the Modal GPU endpoint from deploy/modal/llm_server.py
-        sync: false
+      - key: SANDBOX_ENABLED
+        value: "false"
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
+        value: qwen/qwen3.8-27b
+      - key: LLM_API_KEY  # Groq API key (console.groq.com)
         sync: false
-      - key: LLM_API_KEY
-        sync: false
-      - key: QUESTIONS_PER_HOUR  # per user; keeps a public demo's LLM bill bounded
-        value: "20"
+      - key: LLM_TIMEOUT_SECONDS
+        value: "300"
+      - key: EMBEDDING_BASE_URL
+        value: ""
+      - key: QUESTIONS_PER_HOUR  # per user; keeps the free LLM quota for everyone
+        value: "10"
+      - key: METRICS_ENABLED
+        value: "false"
       - key: LOG_JSON
         value: "true"
-
-  - type: web
-    name: analystos-web
-    runtime: docker
-    plan: free
-    dockerfilePath: ./frontend/Dockerfile
-    dockerContext: ./frontend
-    healthCheckPath: /healthz
-    envVars:
-      - key: BACKEND_URL  # public URL of analystos-api, e.g. https://analystos-api.onrender.com
-        sync: false

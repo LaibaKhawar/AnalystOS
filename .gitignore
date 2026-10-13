@@ -31,3 +31,6 @@ frontend/.vite/
 .idea/
 .vscode/
 *.swp
+
+# Local API keys
+*.env

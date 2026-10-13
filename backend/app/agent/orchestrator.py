@@ -82,7 +82,7 @@ class AnalysisRunner:
         self.settings = get_settings()
         self.sandbox = sandbox or get_sandbox()
         self.emit_events = emit_events
-        self.tools = build_registry()
+        self.tools = build_registry(python=self.settings.sandbox_enabled)
         self.catalog_text = tool_catalog(self.tools)
 
     # ------------------------------------------------------------------------------------------------

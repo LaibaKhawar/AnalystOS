@@ -30,6 +30,26 @@ def strip_reasoning(text: str) -> str:
     return text.strip()
 
 
+_MAX_ATTEMPTS = 6
+_MAX_WAIT_SECONDS = 60.0
+
+
+def _retry_after(response: httpx.Response, attempt: int) -> float:
+    """Seconds to wait after a 429: the provider's Retry-After (or Groq-style reset header), else backoff."""
+    for header in ("retry-after", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        value = response.headers.get(header)
+        if not value:
+            continue
+        match = re.fullmatch(r"(?:(\d+)m)?(\d+(?:\.\d+)?)s?|(\d+(?:\.\d+)?)ms", value.strip())
+        if match:
+            if match.group(3):
+                seconds = float(match.group(3)) / 1000
+            else:
+                seconds = float(match.group(1) or 0) * 60 + float(match.group(2))
+            return min(max(seconds, 0.5), _MAX_WAIT_SECONDS)
+    return min(2.0 * 2**attempt, _MAX_WAIT_SECONDS)
+
+
 class OpenAICompatibleProvider(LLMProvider):
     def __init__(self, settings: Settings | None = None, *, model: str | None = None) -> None:
         self.settings = settings or get_settings()
@@ -86,12 +106,21 @@ class OpenAICompatibleProvider(LLMProvider):
             body["response_format"] = {"type": "json_object"}
         started = time.perf_counter()
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(_MAX_ATTEMPTS):
             try:
                 response = self._client.post(url, json=body, headers=headers)
-                if response.status_code in {429, 500, 502, 503, 504} and attempt < 2:
+                if response.status_code == 429 and attempt < _MAX_ATTEMPTS - 1:
+                    # Hosted free tiers limit tokens per minute; wait as long as the provider asks.
+                    time.sleep(_retry_after(response, attempt))
+                    continue
+                if response.status_code in {500, 502, 503, 504} and attempt < 2:
                     time.sleep(1.5 * (attempt + 1))
                     continue
+                if response.status_code == 413:
+                    raise LLMError(
+                        "This request is larger than the model provider allows (free tiers cap tokens per request). "
+                        "Try a dataset with fewer tables or columns, or configure a model without that limit."
+                    )
                 if response.status_code >= 400:
                     raise LLMError(f"LLM provider returned HTTP {response.status_code}: {response.text[:200]}")
                 data = response.json()

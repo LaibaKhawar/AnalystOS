@@ -174,3 +174,70 @@ def test_llm_client_follows_cold_start_redirects() -> None:
     response = provider.complete([{"role": "user", "content": "hi"}], purpose="plan")
     assert response.content == '{"ok": true}'
     assert OpenAICompatibleProvider(get_settings(), model="m")._client.follow_redirects is True
+
+
+def test_python_tool_is_not_offered_without_a_sandbox() -> None:
+    from app.agent.tools.registry import build_registry, tool_catalog
+
+    assert "execute_python" in build_registry()
+    without = build_registry(python=False)
+    assert "execute_python" not in without
+    assert "execute_python" not in tool_catalog(without)
+    assert "execute_sql" in without
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ({"retry-after": "7"}, 7.0),
+        ({"x-ratelimit-reset-tokens": "1.74s"}, 1.74),
+        ({"x-ratelimit-reset-tokens": "1m26.4s"}, 60.0),  # capped
+        ({"x-ratelimit-reset-tokens": "200ms"}, 0.5),  # floor
+        ({}, 2.0),  # backoff on the first retry when the provider gives no hint
+    ],
+)
+def test_rate_limit_waits_follow_the_provider(headers: dict[str, str], expected: float) -> None:
+    import httpx
+
+    from app.agent.llm.openai_compat import _retry_after
+
+    assert _retry_after(httpx.Response(429, headers=headers), 0) == pytest.approx(expected)
+
+
+def test_llm_client_waits_out_rate_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    import httpx
+
+    from app.agent.llm import openai_compat
+    from app.agent.llm.openai_compat import OpenAICompatibleProvider
+    from app.core.config import get_settings
+
+    waits: list[float] = []
+    monkeypatch.setattr(openai_compat.time, "sleep", waits.append)
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] <= 4:  # more 429s than the old three-attempt loop could absorb
+            return httpx.Response(429, headers={"retry-after": "3"})
+        body = {"model": "m", "choices": [{"message": {"content": "{}"}}], "usage": {}}
+        return httpx.Response(200, content=json.dumps(body))
+
+    provider = OpenAICompatibleProvider(get_settings(), model="m")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert provider.complete([{"role": "user", "content": "hi"}], purpose="plan").content == "{}"
+    assert waits == [3.0, 3.0, 3.0, 3.0]
+
+
+def test_oversized_requests_get_a_readable_error() -> None:
+    import httpx
+
+    from app.agent.llm.openai_compat import OpenAICompatibleProvider
+    from app.core.config import get_settings
+    from app.core.errors import LLMError
+
+    provider = OpenAICompatibleProvider(get_settings(), model="m")
+    provider._client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(413, text="too large")))
+    with pytest.raises(LLMError, match="larger than the model provider allows"):
+        provider.complete([{"role": "user", "content": "hi"}], purpose="plan")
