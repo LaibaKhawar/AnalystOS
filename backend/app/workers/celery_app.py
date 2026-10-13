@@ -25,22 +25,38 @@ celery_app.conf.update(
 )
 
 
-@worker_init.connect
-def _start_metrics_server(**_: object) -> None:
-    """Expose the worker's Prometheus metrics (tool, LLM, SQL, sandbox) on :9100."""
-    if settings.metrics_enabled:
-        from prometheus_client import start_http_server
-
-        with contextlib.suppress(OSError):  # another worker on this host already serves the port
-            start_http_server(9100)
+def _is_prefork(worker: object) -> bool:
+    pool = getattr(worker, "pool_cls", None)
+    name = f"{getattr(pool, '__module__', '')}.{getattr(pool, '__name__', pool)}"
+    return "prefork" in name.lower()
 
 
-@worker_process_init.connect
-def _init_worker(**_: object) -> None:
+def _init_runtime() -> None:
+    """Per-process setup: logging, tracing exporter, sandbox status."""
     configure_logging(settings.log_level, settings.log_json)
     from app.core.tracing import configure_tracing
     from app.workers.tasks import publish_sandbox_status
 
     configure_tracing("analystos-worker")
-
     publish_sandbox_status()
+
+
+@worker_init.connect
+def _on_worker_init(sender: object = None, **_: object) -> None:
+    """Metrics server, plus the per-process setup when tasks run in this process (thread/solo pools).
+
+    worker_process_init only fires in forked prefork children; with --pool=threads it never fires, which once left
+    the worker without tracing.
+    """
+    if settings.metrics_enabled:
+        from prometheus_client import start_http_server
+
+        with contextlib.suppress(OSError):  # another worker on this host already serves the port
+            start_http_server(9100)
+    if not _is_prefork(sender):
+        _init_runtime()
+
+
+@worker_process_init.connect
+def _on_worker_process_init(**_: object) -> None:
+    _init_runtime()  # prefork children: exporter threads do not survive fork, so set up after it

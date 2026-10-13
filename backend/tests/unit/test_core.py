@@ -112,3 +112,39 @@ def test_result_rows_are_json_safe() -> None:
     rows = json_rows([[float("nan"), np.float64("nan"), np.int64(3), float("inf"), "Enterprise", None]])
     assert rows == [[None, None, 3, None, "Enterprise", None]]
     json.dumps(rows, allow_nan=False)  # what Postgres JSONB accepts
+
+
+def test_every_runtime_dependency_is_pinned_in_the_lockfile() -> None:
+    """The Docker image installs requirements.lock; a dependency missing there only fails in production."""
+    import re
+    import tomllib
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    declared = tomllib.loads((root / "pyproject.toml").read_text())["project"]["dependencies"]
+    pinned = {
+        re.split(r"==", line)[0].strip().lower().replace("_", "-")
+        for line in (root / "requirements.lock").read_text().splitlines()
+        if "==" in line
+    }
+    names = {re.split(r"[<>=!~\[; ]", spec, maxsplit=1)[0].lower().replace("_", "-") for spec in declared}
+    assert sorted(names - pinned) == []
+
+
+def test_thread_pool_workers_set_up_tracing_without_prefork_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    from celery.concurrency import prefork, thread
+
+    from app.workers import celery_app as worker_module
+
+    calls: list[str] = []
+    monkeypatch.setattr(worker_module, "_init_runtime", lambda: calls.append("init"))
+    monkeypatch.setattr(worker_module.settings, "metrics_enabled", False)
+
+    class Worker:
+        def __init__(self, pool_cls: object) -> None:
+            self.pool_cls = pool_cls
+
+    worker_module._on_worker_init(sender=Worker(thread.TaskPool))
+    assert calls == ["init"]  # threads: set up in this process
+    worker_module._on_worker_init(sender=Worker(prefork.TaskPool))
+    assert calls == ["init"]  # prefork: left to worker_process_init in each child
