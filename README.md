@@ -8,9 +8,12 @@ detects anomalies, breaks changes down into their drivers, draws charts and writ
 answer is matched against the query or computation that produced it before you see it, and one click shows the
 SQL, the formula and the rows behind each claim.
 
-**[Live demo](https://laibakhawar.github.io/AnalystOS/)** — a read-only replay of real analyses recorded from the
-running app with a local Qwen3 8B model (every answer, chart and evidence trail was produced by the backend; asking
-new questions needs the backend, see [Quick start](#quick-start-docker)).
+**[Live app](https://analystos-six.vercel.app)** (sign in as `demo@analystos.dev` / `analystos-demo-2026`, or
+register): the full stack running for free, frontend on Vercel, backend and Qwen3 on Modal CPU credits (see
+[free deployment](docs/deployment.md#free-live-deployment-modal--vercel)). The first request after idle wakes the
+backend (about 20 s), and answers take a minute or two because the model runs on CPU.
+**[Replay demo](https://laibakhawar.github.io/AnalystOS/)**: a read-only replay of recorded analyses that always
+loads instantly.
 
 ![Demo: question, plan, scope check, verified answer, chart and the evidence behind a number](docs/demo/demo.gif)
 

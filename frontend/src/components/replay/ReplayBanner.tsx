@@ -15,6 +15,12 @@ export function ReplayBanner({ info }: { info: ReplayInfo }) {
         {formatDateTime(info.recordedAt)} with {info.model}; asking new questions needs the backend.
       </span>
       <a
+        href="https://analystos-six.vercel.app"
+        className="text-brand-text inline-flex items-center gap-1 font-medium hover:underline"
+      >
+        Try the live app
+      </a>
+      <a
         href="https://github.com/LaibaKhawar/AnalystOS#quick-start-docker"
         className="text-brand-text inline-flex items-center gap-1 font-medium hover:underline"
       >

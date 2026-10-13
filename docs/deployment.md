@@ -69,6 +69,39 @@ The demo account is seeded with the `analyst` role (its password is public, so i
 ephemeral (visitor uploads vanish on restart; the demo datasets are re-seeded), and schedules need the paid `worker`
 and `beat` background services (same image, commands as in `docker-compose.yml`).
 
+### Free live deployment (Modal + Vercel)
+
+The [live app](https://analystos-six.vercel.app) follows Modal's
+[Qwen chatbot with Vercel](https://modal.com/blog/deploy-qwen-chatbot-vercel) architecture: an OpenAI-compatible
+Qwen3 endpoint on Modal and a frontend on Vercel. Modal only allows GPUs on workspaces with a payment method, so this
+setup uses CPU containers, which run on the free monthly credits:
+
+| Piece | Where | File |
+|---|---|---|
+| Qwen3-4B-Instruct-2507 (Q4 GGUF), llama.cpp server, OpenAI-compatible `/v1`, API key required | Modal CPU (16 vCPU), scales to zero | `deploy/modal/llm_cpu.py` |
+| API + Postgres 16 (pgvector) + Redis in one container; analyses inline; Python in Modal Sandboxes | Modal CPU (4 vCPU), scales to zero | `deploy/modal/app_server.py` |
+| React app; `/api` rewritten to the Modal backend (same origin, no CORS) | Vercel Hobby | `frontend/vercel.json` |
+
+```bash
+pip install modal && modal token new
+# model server
+modal secret create analystos-llm LLM_API_KEY=<random key>
+modal run deploy/modal/llm_cpu.py::download && modal deploy deploy/modal/llm_cpu.py
+# backend (SECRET_KEY: random hex, ENCRYPTION_KEY: a Fernet key, LLM_API_KEY: the key above)
+modal secret create analystos-app SECRET_KEY=... ENCRYPTION_KEY=... LLM_API_KEY=<same key>
+modal deploy deploy/modal/app_server.py
+# frontend: set the rewrite destination in frontend/vercel.json to the backend URL Modal printed, then
+cd frontend && npx vercel deploy --prod
+```
+
+Measured on this setup: the llama.cpp server generates about 27 tokens/s on 16 vCPUs; a 5-case benchmark subset
+passed 5/5 at about a minute per question; the Playwright end-to-end test (register, upload, profile, ask, evidence,
+report) passes against the public URL. The database is dumped to a Modal Volume every five minutes and when the
+container stops, and restored on start (verified by stopping the container and finding the data on the next one).
+Trade-offs: cold starts (about 20 s for the backend, longer for the model), CPU latency, one backend container, and
+scheduled analyses only run while the container is awake. With a payment method, `deploy/modal/llm_server.py` serves
+Qwen3-8B on a GPU (vLLM) instead.
+
 ### Free static demo (GitHub Pages)
 
 The [live demo](https://laibakhawar.github.io/AnalystOS/) costs nothing to host: it is the frontend built in replay

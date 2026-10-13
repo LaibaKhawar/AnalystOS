@@ -28,3 +28,5 @@ playwright-report
 test-results
 coverage
 dist-replay
+.vercel
+.env*

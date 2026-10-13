@@ -54,15 +54,24 @@ app = modal.App("analystos-llm")
 @modal.web_server(port=PORT, startup_timeout=15 * 60)
 def serve() -> None:
     cmd = [
-        "vllm", "serve", MODEL,
-        "--served-model-name", MODEL,
-        "--host", "0.0.0.0",
-        "--port", str(PORT),
-        "--api-key", os.environ["LLM_API_KEY"],
-        "--max-model-len", str(MAX_MODEL_LEN),
-        "--gpu-memory-utilization", "0.92",
+        "vllm",
+        "serve",
+        MODEL,
+        "--served-model-name",
+        MODEL,
+        "--host",
+        "0.0.0.0",  # noqa: S104 - inside the container; Modal routes the public URL here
+        "--port",
+        str(PORT),
+        "--api-key",
+        os.environ["LLM_API_KEY"],
+        "--max-model-len",
+        str(MAX_MODEL_LEN),
+        "--gpu-memory-utilization",
+        "0.92",
         "--enable-prefix-caching",
         # Qwen3 reasoning is disabled per request by AnalystOS ("/no_think"); any <think> output is stripped.
-        "--reasoning-parser", "qwen3",
+        "--reasoning-parser",
+        "qwen3",
     ]
     subprocess.Popen(" ".join(cmd), shell=True)  # noqa: S602 - fixed command, no user input
