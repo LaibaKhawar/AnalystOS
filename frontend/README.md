@@ -57,7 +57,7 @@ Multi-stage: Node builds `dist/`, nginx serves it. `nginx.conf` proxies `/api/` 
 
 The live app (https://analystos-six.vercel.app) is the Vercel project `analystos`, connected to this repository with
 `frontend` as its root directory. Every push to `main` that changes `frontend/` deploys to production automatically;
-pushes that only touch the backend or docs skip the build. `/api` is rewritten to the Modal backend in `vercel.json`.
+pushes that only touch the backend or docs skip the build. `/api` is rewritten to the Render backend in `vercel.json`.
 Pull requests get preview deployments.
 
 ## Structure

@@ -9,9 +9,10 @@ answer is matched against the query or computation that produced it before you s
 SQL, the formula and the rows behind each claim.
 
 **[Live app](https://analystos-six.vercel.app)** (sign in as `demo@analystos.dev` / `analystos-demo-2026`, or
-register): the full stack running for free, frontend on Vercel, backend and Qwen3 on Modal CPU credits (see
-[free deployment](docs/deployment.md#free-live-deployment-modal--vercel)). The first request after idle wakes the
-backend (about 20 s), and answers take a minute or two because the model runs on CPU.
+register): the full stack on free tiers with no payment card: frontend on Vercel, API with Postgres and Redis on
+Render, Qwen 3.8 27B on Groq (see [free deployment](docs/deployment.md#free-live-deployment-vercel--render--groq)).
+After 15 idle minutes the backend sleeps and resets to the demo data; the first request then waits for it to wake.
+The Python tool is off there (no isolation layer on Render); everything else works.
 **[Replay demo](https://laibakhawar.github.io/AnalystOS/)**: a read-only replay of recorded analyses that always
 loads instantly.
 
@@ -320,7 +321,7 @@ On the SaaS data: "Which plan has the highest churn rate, and do churned custome
 - **Small integers are not verified** (counts up to 12 such as "top 3" are treated as wording, not claims).
 - **Sandbox host access.** In Docker Compose the worker uses the host Docker socket to start sandboxes; generated code
   never runs in the worker, but production deployments should use a rootless daemon, gVisor (`SANDBOX_RUNTIME=runsc`)
-  or the Modal backend.
+  or the Modal backend; the free Render deployment has no isolation layer, so it switches the Python tool off.
 - **One data source per conversation**; tables within a source can be joined, sources cannot.
 - **Excel**: very large workbooks are read in streaming mode, where merged cells are not expanded. Formulas are read
   as their cached values.
