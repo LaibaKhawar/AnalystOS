@@ -165,33 +165,35 @@ else using the GPU.
 
 ### Model comparison
 
-Same 67 cases, same code, three free models served locally by Ollama (16K context). Qwen3 4B is the
+Same 67 cases, same code, four models. Three are free models served locally by Ollama (16K context) on the laptop;
+Ministral 8B (`Ministral-8B-Instruct-2410`) is served by vLLM on a Modal A10G GPU (16K context), with cost estimated
+from GPU-seconds of model time at the A10G rate. Qwen3 4B is the
 `qwen3:4b-instruct-2507` build: the default `qwen3:4b` tag is now a thinking-only model that cannot return plain
-JSON, so that run was stopped and replaced. The Qwen3 4B run was made after the NaN fix described above; the other
-runs were not.
+JSON, so that run was stopped and replaced. The Qwen3 4B and Ministral 8B runs were made after the NaN fix described above; the Qwen3 8B and
+Llama runs were not.
 
-| Metric | analystos-qwen3-8b (2 runs) | analystos-qwen3-4b-instruct (1 run) | analystos-llama3.1-8b (1 run) |
-|---|---|---|---|
-| Overall pass rate | **93.3% (92.5% to 94.0%)** | 88.1% | 67.2% |
-| Numerical accuracy | **93.9%** | 81.8% | 63.6% |
-| Entity accuracy | **92.6%** | **92.6%** | 66.7% |
-| Computation accuracy | **92.4% (91.5% to 93.2%)** | 84.8% | 67.8% |
-| Unsupported numbers in drafts | **2.4% (1.8% to 2.9%)** | 8.6% | 12.8% |
-| Unsupported numbers in final answers | **0.0%** | **0.0%** | **0.0%** |
-| First-pass step success | **87.6% (85.0% to 90.3%)** | 83.4% | 72.4% |
-| Retry recovery | **91.7% (83.3% to 100.0%)** | 55.9% | 66.7% |
-| Safety cases passed | **100.0%** | **100.0%** | **100.0%** |
-| Latency p50 | 78.1s (75.4s to 80.9s) | **26.9s** | 30.7s |
-| Latency p95 | 285.6s (235.7s to 335.4s) | **75.6s** | 95.0s |
-| LLM calls per task | **2.73 (2.52 to 2.93)** | 3.37 | 3.52 |
-| Cost per task | **$0.0000** | **$0.0000** | **$0.0000** |
+| Metric | analystos-qwen3-8b (2 runs) | analystos-qwen3-4b-instruct (1 run) | analystos-llama3.1-8b (1 run) | ministral-8b (1 run) |
+|---|---|---|---|---|
+| Overall pass rate | **93.3% (92.5% to 94.0%)** | 88.1% | 67.2% | 64.2% |
+| Numerical accuracy | **93.9%** | 81.8% | 63.6% | 60.6% |
+| Entity accuracy | **92.6%** | **92.6%** | 66.7% | 59.3% |
+| Computation accuracy | **92.4% (91.5% to 93.2%)** | 84.8% | 67.8% | 61.0% |
+| Unsupported numbers in drafts | **2.4% (1.8% to 2.9%)** | 8.6% | 12.8% | 17.0% |
+| Unsupported numbers in final answers | **0.0%** | **0.0%** | **0.0%** | **0.0%** |
+| First-pass step success | **87.6% (85.0% to 90.3%)** | 83.4% | 72.4% | 67.6% |
+| Retry recovery | **91.7% (83.3% to 100.0%)** | 55.9% | 66.7% | 52.2% |
+| Safety cases passed | **100.0%** | **100.0%** | **100.0%** | **100.0%** |
+| Latency p50 | 78.1s (75.4s to 80.9s) | 26.9s | 30.7s | **16.5s** |
+| Latency p95 | 285.6s (235.7s to 335.4s) | 75.6s | 95.0s | **40.9s** |
+| LLM calls per task | **2.73 (2.52 to 2.93)** | 3.37 | 3.52 | 4.10 |
+| Cost per task | **$0.0000** | **$0.0000** | **$0.0000** | $0.0064 |
 
-What it shows: **model quality moves pass rate, not trustworthiness.** Llama 3.1 8B drafted five times more
-unsupported numbers than Qwen3 8B (12.8% vs 2.4%) and passed far fewer cases, yet 0% of the numbers in its final
-answers lacked evidence, and it executed no unsafe SQL. A weaker model makes AnalystOS answer less, not answer
-wrongly. The small Qwen3 4B is three times faster than the 8B and loses about five points of pass rate, mostly on
-numeric and multi-table questions.
-
+What it shows: **model quality moves pass rate, not trustworthiness.** The weaker the model, the more unsupported
+numbers it drafts (2.4% for Qwen3 8B up to 17.0% for Ministral 8B) and the fewer cases it passes, yet across all four
+models 0% of the numbers in final answers lacked evidence, and none executed unsafe SQL. A weaker model makes
+AnalystOS answer less, not answer wrongly. Speed is the other axis: on a hosted A10G the agent answers in 16 s at the
+median instead of 78 s on the laptop, for about $0.006 per question. Qwen3 8B stays the default model; serving it on
+the same GPU (`deploy/modal/llm_server.py`) should combine both, but has not been measured yet.
 
 ## Quick start (Docker)
 
@@ -321,12 +323,12 @@ On the SaaS data: "Which plan has the highest churn rate, and do churned custome
   as their cached values.
 - **Mostly synthetic benchmark.** Four of the five evaluation datasets are generated with known answers; the fifth is
   the real Chinook database. It measures the system's mechanics, not accuracy on arbitrary real-world data.
-- **Hosted models not yet measured.** The comparison covers free local models only; the tooling runs the same suite
-  against any OpenAI-compatible endpoint (`evals.run --model ... --base-url ...`).
+- **Commercial APIs not yet measured.** The comparison covers open models (three local, one on a hosted GPU); the
+  tooling runs the same suite against any OpenAI-compatible endpoint (`evals.run --model ... --base-url ...`).
 
 ## Future improvements
 
-1. Hosted-model evaluation (GPT-4o-mini, Claude Haiku) next to the local models, to separate model limits from system limits.
+1. Commercial-API evaluation (GPT-4o-mini, Claude Haiku) next to the open models, and Qwen3 8B on the hosted GPU.
 2. Learned plan templates for common question shapes (period comparison, ranking, trend), extending the fast path.
 3. Semantic verification: an NLI check that a sentence's wording matches the finding it cites, on top of number matching.
 4. A separate sandbox service instead of the Docker socket.
