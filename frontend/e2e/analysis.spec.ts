@@ -70,13 +70,19 @@ test('register, upload, profile, analyze, inspect evidence, report', async ({ pa
 
   await test.step('see a chart', async () => {
     let chartTurn = turn
+    // Charts load in their own request after the analysis completes; give them a moment before deciding.
+    await turn
+      .getByTestId('chart-card')
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .catch(() => undefined)
     if ((await turn.getByTestId('chart-card').count()) === 0) {
       // The planner sometimes answers a "highest" question with a single-row aggregate and no chart.
       // Ask for the chart explicitly as a follow-up in the same conversation.
       test
         .info()
         .annotations.push({ type: 'note', description: 'First answer had no chart; asked a follow-up chart request.' })
-      await expect(page.getByTestId('ask-input')).toBeEnabled()
+      await expect(page.getByTestId('ask-input')).toBeEnabled({ timeout: 30_000 })
       await page.getByTestId('ask-input').fill(FOLLOW_UP)
       await page.getByTestId('ask-submit').click()
       chartTurn = page.getByTestId('analysis-turn').last()
