@@ -6,8 +6,9 @@
 # database is needed (Render allows one per workspace, and it expires after 30 days).
 # Free-plan limits: the service sleeps after 15 idle minutes (the next request waits for it to start), it has 512 MB
 # of memory (measured peak about 420 MB with an analysis and a PDF report), and its disk is ephemeral: every start
-# re-creates the database with the demo account and sample datasets. There is no Docker daemon or isolation layer for generated Python, so the Python tool is disabled
-# (SANDBOX_ENABLED=false); SQL, statistics, anomaly detection, charts, verification and reports all work.
+# re-creates the database with the demo account and sample datasets. There is no Docker daemon or isolation layer
+# for generated Python, so the Python tool is disabled (SANDBOX_ENABLED=false); SQL, statistics, anomaly detection,
+# charts, verification and reports all work.
 
 services:
   - type: web

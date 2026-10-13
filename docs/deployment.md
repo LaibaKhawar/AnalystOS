@@ -45,62 +45,49 @@ port 9100.
 
 ## Hosts without Docker (Render, Fly, Railway)
 
-Platform hosts do not give containers a Docker daemon, so set `SANDBOX_BACKEND=modal` (with `MODAL_TOKEN_ID` and
-`MODAL_TOKEN_SECRET`) to run generated Python in Modal sandboxes, and point `LLM_BASE_URL` at a hosted model or the
-Modal GPU deployment (`deploy/modal/llm_server.py`). For a single-service demo, `RUN_ANALYSES_INLINE=true` runs
-analyses in the API process instead of a separate worker. Build the backend image with
-`--build-arg INSTALL_MODAL=true` so the Modal client is included.
+Platform hosts do not give containers a Docker daemon. Either run generated Python in Modal sandboxes
+(`SANDBOX_BACKEND=modal` with `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`; build the backend image with
+`--build-arg INSTALL_MODAL=true`) or switch the Python tool off (`SANDBOX_ENABLED=false`). For a single-service
+deployment, `RUN_ANALYSES_INLINE=true` runs analyses in the API process instead of a separate worker.
 
-### Render (blueprint)
+### Free live deployment (Vercel + Render + Groq)
 
-[`render.yaml`](../render.yaml) describes a free-tier demo: Postgres, Key Value (Redis), the API (migrations and the
-demo seed run at start, analyses inline, Modal sandboxes) and the frontend. In Render: **New > Blueprint**, pick the
-repository, then fill the values marked `sync: false`:
-
-| Service | Variable | Value |
-|---|---|---|
-| analystos-api | `ENCRYPTION_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| analystos-api | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | from `modal token new` (or `~/.modal.toml`) |
-| analystos-api | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | any OpenAI-compatible endpoint |
-| analystos-web | `BACKEND_URL` | the API's public URL, e.g. `https://analystos-api.onrender.com` |
-
-The demo account is seeded with the `analyst` role (its password is public, so it must not be an admin).
-`QUESTIONS_PER_HOUR=20` bounds the LLM bill per account. Free-plan limits: the API sleeps when idle, its disk is
-ephemeral (visitor uploads vanish on restart; the demo datasets are re-seeded), and schedules need the paid `worker`
-and `beat` background services (same image, commands as in `docker-compose.yml`).
-
-### Free live deployment (Modal + Vercel)
-
-The [live app](https://analystos-six.vercel.app) follows Modal's
-[Qwen chatbot with Vercel](https://modal.com/blog/deploy-qwen-chatbot-vercel) architecture: an OpenAI-compatible
-Qwen3 endpoint on Modal and a frontend on Vercel. Modal only allows GPUs on workspaces with a payment method, so this
-setup uses CPU containers, which run on the free monthly credits:
+The [live app](https://analystos-six.vercel.app) runs on three free tiers that need no payment card:
 
 | Piece | Where | File |
 |---|---|---|
-| Qwen3-4B-Instruct-2507 (Q4 GGUF), llama.cpp server, OpenAI-compatible `/v1`, API key required | Modal CPU (16 vCPU), scales to zero | `deploy/modal/llm_cpu.py` |
-| API + Postgres 16 (pgvector) + Redis in one container; analyses inline; Python in Modal Sandboxes | Modal CPU (4 vCPU), scales to zero | `deploy/modal/app_server.py` |
-| React app; `/api` rewritten to the Modal backend (same origin, no CORS) | Vercel Hobby | `frontend/vercel.json` |
+| React app; `/api` rewritten to the backend (same origin, no CORS); deploys on every push that changes `frontend/` | Vercel Hobby | `frontend/vercel.json` |
+| API with PostgreSQL 16 (pgvector) and Redis in the same container; analyses inline | Render free web service (512 MB) | `deploy/render/Dockerfile`, [`render.yaml`](../render.yaml) |
+| Qwen 3.8 27B through an OpenAI-compatible API | Groq free tier | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` |
 
-```bash
-pip install modal && modal token new
-# model server
-modal secret create analystos-llm LLM_API_KEY=<random key>
-modal run deploy/modal/llm_cpu.py::download && modal deploy deploy/modal/llm_cpu.py
-# backend (SECRET_KEY: random hex, ENCRYPTION_KEY: a Fernet key, LLM_API_KEY: the key above)
-modal secret create analystos-app SECRET_KEY=... ENCRYPTION_KEY=... LLM_API_KEY=<same key>
-modal deploy deploy/modal/app_server.py
-# frontend: set the rewrite destination in frontend/vercel.json to the backend URL Modal printed, then
-cd frontend && npx vercel deploy --prod
-```
+Setup: create the backend from `render.yaml` (Render: **New > Blueprint**) and fill `ENCRYPTION_KEY` (a Fernet key)
+and `LLM_API_KEY` (a Groq key); point the rewrite in `frontend/vercel.json` at the Render URL; import the repository
+in Vercel with `frontend` as the root directory.
 
-Measured on this setup: the llama.cpp server generates about 27 tokens/s on 16 vCPUs; a 5-case benchmark subset
-passed 5/5 at about a minute per question; the Playwright end-to-end test (register, upload, profile, ask, evidence,
-report) passes against the public URL. The database is dumped to a Modal Volume every five minutes and when the
-container stops, and restored on start (verified by stopping the container and finding the data on the next one).
-Trade-offs: cold starts (about 20 s for the backend, longer for the model), CPU latency, one backend container, and
-scheduled analyses only run while the container is awake. With a payment method, `deploy/modal/llm_server.py` serves
-Qwen3-8B on a GPU (vLLM) instead.
+What the free tiers imply, all measured:
+
+- **Memory.** Render's free instance has 512 MB; the container idles at about 310 MB and peaked at about 420 MB
+  during an analysis plus a PDF report.
+- **Ephemeral data.** The service sleeps after 15 idle minutes and its disk does not survive that: each start
+  re-creates the database with the demo account and sample datasets (a separate free Render database would expire
+  after 30 days, and only one is allowed per workspace). The first request after a sleep waits for the start.
+- **Model rate limits.** Groq's free tier allows about 8,000 tokens per minute per model. The client waits out 429
+  responses as the provider asks, so a question takes one to two minutes; a request larger than the per-request
+  limit (a very wide multi-table schema) is refused with a clear message.
+- **No Python sandbox.** Render has no Docker daemon or isolation layer, so the Python tool is switched off
+  (`SANDBOX_ENABLED=false`) and never offered to the planner; SQL, statistics, anomaly detection, charts,
+  verification and reports all work.
+- **Schedules** run only while the service is awake.
+
+### Modal deployment (needs a payment method)
+
+`deploy/modal/llm_cpu.py` (Qwen3-4B on CPU with llama.cpp), `deploy/modal/llm_server.py` (Qwen3-8B on a GPU with
+vLLM) and `deploy/modal/app_server.py` (the API with Postgres and Redis, data dumped to a Volume) follow Modal's
+[Qwen chatbot with Vercel](https://modal.com/blog/deploy-qwen-chatbot-vercel) architecture. They ran the live app
+until Modal disabled the workspace: without a payment method a workspace gets only about $1 of usage. Measured while
+it ran: 27 tokens/s on 16 vCPUs, a 5-case benchmark subset passed 5/5, the Playwright end-to-end test passed against
+the public URL, and the database survived a forced container restart. With a card on the account, the $30 monthly
+credits cover a scale-to-zero demo.
 
 ### Free static demo (GitHub Pages)
 
