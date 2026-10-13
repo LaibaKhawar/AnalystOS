@@ -53,6 +53,13 @@ docker run -p 8080:80 --network <compose-network> analystos-frontend
 
 Multi-stage: Node builds `dist/`, nginx serves it. `nginx.conf` proxies `/api/` to `http://backend:8000` with SSE-friendly settings (`proxy_buffering off`, `proxy_read_timeout 3600s`), raises the upload limit to 210 MB, caches hashed assets and falls back to `index.html` for client routes.
 
+## Deployment
+
+The live app (https://analystos-six.vercel.app) is the Vercel project `analystos`, connected to this repository with
+`frontend` as its root directory. Every push to `main` that changes `frontend/` deploys to production automatically;
+pushes that only touch the backend or docs skip the build. `/api` is rewritten to the Modal backend in `vercel.json`.
+Pull requests get preview deployments.
+
 ## Structure
 
 ```
