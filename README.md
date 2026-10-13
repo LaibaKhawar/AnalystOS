@@ -266,12 +266,12 @@ scripted test double (in `backend/tests`, never in production code paths).
 
 | Suite | Result |
 |---|---|
-| Backend unit tests | 195 passed |
+| Backend unit tests | 196 passed |
 | Backend integration tests (real API, orchestrator, tools, verifier, Postgres, Docker sandbox; scripted LLM) | 52 passed |
 | Backend coverage | 84% |
 | Frontend unit tests (Vitest) | 122 passed |
 | End-to-end, deterministic (`npm run e2e:ci`: real backend, rule-based LLM stand-in; register, upload, profile, ask, evidence, report, sharing, roles, saved metrics, schedules) | 2 / 2 passed |
-| End-to-end with the real LLM (`npm run e2e` against a running stack) | passed |
+| End-to-end with the real LLM (`npm run e2e`, against a local stack and against the live deployment) | passed |
 | Lint / format / types | ruff, mypy, ESLint, Prettier, tsc: clean |
 | Security | Bandit clean, gitleaks clean on full history |
 | Benchmark | 67 cases × 2 runs, see [Evaluation results](#evaluation-results) |
