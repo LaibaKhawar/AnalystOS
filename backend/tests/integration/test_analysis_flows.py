@@ -641,3 +641,52 @@ def test_fast_path_answers_without_llm_calls(client: TestClient, auth, agent, up
     assert expected in analysis["answer"]["headline"]
     assert analysis["answer"]["verification"]["verified"] >= 1
     assert analysis["answer"]["verification"]["final_unsupported_rate"] == 0.0
+
+
+def test_monthly_breakdown_still_ranks_totals_and_missing_metric_counts_rows(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, agent, upload, ask, data_dir: Path
+) -> None:
+    import pandas as pd
+
+    source = upload(data_dir / "sales.csv")
+    agent.script(
+        plan=[
+            {
+                "goal": "Top store in Q1 2026",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "title": "Revenue by store and month",
+                        "tool": "aggregate_metric",
+                        "args": {
+                            "metric": {"column": "revenue"},
+                            "group_by": ["store"],
+                            "time_grain": "month",
+                            "period": "2026-Q1",
+                        },
+                    },
+                    {
+                        "id": "s2",
+                        "title": "Orders in 2025",
+                        "tool": "aggregate_metric",
+                        "args": {"period": "2025"},  # no metric: count rows
+                    },
+                ],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "Highest" in t, 1)],
+    )
+    analysis = ask(
+        source["id"], "Which store had the highest revenue in Q1 2026, and how many orders were there in 2025?"
+    )
+    findings = client.get(f"/api/analyses/{analysis['id']}/findings", headers=auth).json()
+
+    sales = pd.read_csv(data_dir / "sales.csv", parse_dates=["date"])
+    q1 = sales[(sales.date >= "2026-01-01") & (sales.date <= "2026-03-31")]
+    top_store = q1.groupby("store")["revenue"].sum().idxmax()
+    top = next(
+        f for f in findings if f["statement"].startswith("Highest") and "total over all months" in f["statement"]
+    )
+    assert top_store in top["statement"]
+    orders_2025 = int((sales.date.dt.year == 2025).sum())
+    assert any(f["values"].get("value") == orders_2025 for f in findings)

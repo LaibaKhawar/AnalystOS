@@ -32,7 +32,10 @@ Grain = Literal["day", "week", "month", "quarter", "year"]
 
 
 class AggregateInput(TableArgs):
-    metric: MetricSpec = Field(..., description="What to measure, e.g. {column: 'revenue', agg: 'sum'}")
+    metric: MetricSpec = Field(
+        default_factory=lambda: MetricSpec(agg="count"),
+        description="What to measure, e.g. {column: 'revenue', agg: 'sum'}; omitted = count of rows",
+    )
     group_by: list[str] = Field(default_factory=list, description="Dimension columns to group by (max 2)")
     time_grain: Grain | None = Field(None, description="Bucket a date column by this grain to get a time series")
     date_column: str | None = None
@@ -140,6 +143,30 @@ class AggregateMetric(Tool):
             from app.agent.tools.common import rows_findings
 
             findings = rows_findings(f"{label}{context}", names, result.rows, limit=40)
+            if args.time_grain and len(args.group_by) == 1 and args.metric.agg in {"sum", "count"}:
+                # "Which store had the highest revenue in Q1?" answered with a monthly breakdown: rank the totals
+                # over the whole period too, so the top single month is never mistaken for the top store.
+                dim = args.group_by[0]
+                values = pd.to_numeric(data[value_label], errors="coerce")
+                totals = (
+                    values.groupby(data[dim])
+                    .sum()
+                    .rename(value_label)
+                    .reset_index()
+                    .sort_values(by=value_label, ascending=args.order == "asc")
+                )
+                findings = (
+                    ranking_findings(
+                        totals,
+                        dim,
+                        value_label,
+                        f"{label} (total over all {args.time_grain}s)",
+                        context=context,
+                        periods=periods,
+                        extra_entities=entities,
+                    )
+                    + findings
+                )
         stored = ctx.save_result_table(
             f"{label} by {', '.join(([args.time_grain] if args.time_grain else []) + args.group_by) or 'total'}",
             result.columns,
