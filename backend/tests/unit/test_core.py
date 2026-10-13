@@ -148,3 +148,29 @@ def test_thread_pool_workers_set_up_tracing_without_prefork_signal(monkeypatch: 
     assert calls == ["init"]  # threads: set up in this process
     worker_module._on_worker_init(sender=Worker(prefork.TaskPool))
     assert calls == ["init"]  # prefork: left to worker_process_init in each child
+
+
+def test_llm_client_follows_cold_start_redirects() -> None:
+    import json
+
+    import httpx
+
+    from app.agent.llm.openai_compat import OpenAICompatibleProvider
+    from app.core.config import get_settings
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/chat/completions"):
+            return httpx.Response(303, headers={"location": "https://gpu.example/result/1"})
+        body = {
+            "model": "m",
+            "choices": [{"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        }
+        return httpx.Response(200, content=json.dumps(body))
+
+    provider = OpenAICompatibleProvider(get_settings(), model="m")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    assert provider._client.follow_redirects is True
+    response = provider.complete([{"role": "user", "content": "hi"}], purpose="plan")
+    assert response.content == '{"ok": true}'
+    assert OpenAICompatibleProvider(get_settings(), model="m")._client.follow_redirects is True

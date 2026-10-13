@@ -34,7 +34,8 @@ class OpenAICompatibleProvider(LLMProvider):
     def __init__(self, settings: Settings | None = None, *, model: str | None = None) -> None:
         self.settings = settings or get_settings()
         self.model = model or self.settings.llm_model
-        self._client = httpx.Client(timeout=self.settings.llm_timeout_seconds)
+        # Serverless GPU hosts (Modal) answer a request that outlives a cold start with a 303 to a result URL.
+        self._client = httpx.Client(timeout=self.settings.llm_timeout_seconds, follow_redirects=True)
 
     def _endpoint(self) -> tuple[str, dict[str, str]]:
         s = self.settings

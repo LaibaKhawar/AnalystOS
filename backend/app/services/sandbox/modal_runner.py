@@ -131,7 +131,9 @@ class ModalSandbox:
             exec_seconds = time.perf_counter() - exec_started
             stdout, stderr = process.stdout.read()[-20_000:], process.stderr.read()[-20_000:]
             duration = int((time.perf_counter() - started) * 1000)
-            if exit_code in (-1, None) or exec_seconds > settings.sandbox_timeout_seconds + 2:
+            # Modal enforces the limit with SIGKILL (exit 137, the same code as an OOM kill) right at the limit, so
+            # a kill at or after it is a timeout; only an earlier 137 is memory.
+            if exit_code in (-1, None) or exec_seconds >= settings.sandbox_timeout_seconds - 0.5:
                 SANDBOX_RUNS.labels(status="timeout").inc()
                 return SandboxResult(
                     status="timeout",
