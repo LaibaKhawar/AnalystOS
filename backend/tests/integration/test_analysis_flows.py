@@ -690,3 +690,34 @@ def test_monthly_breakdown_still_ranks_totals_and_missing_metric_counts_rows(  #
     assert top_store in top["statement"]
     orders_2025 = int((sales.date.dt.year == 2025).sum())
     assert any(f["values"].get("value") == orders_2025 for f in findings)
+
+
+def test_profile_findings_state_non_null_counts_for_dates(  # type: ignore[no-untyped-def]
+    client: TestClient, auth, agent, upload, ask, data_dir: Path
+) -> None:
+    import pandas as pd
+
+    source = upload(data_dir / "saas_subscriptions.csv")
+    tables = client.get(f"/api/sources/{source['id']}/tables", headers=auth).json()
+    agent.script(
+        plan=[
+            {
+                "goal": "Churned customers",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "title": "Count churned customers",
+                        "tool": "profile_dataset",
+                        "args": {"table": tables[0]["name"], "columns": ["churn_date"]},
+                    }
+                ],
+            }
+        ],
+        synthesize=[cite_findings(lambda t: "churn_date" in t, 1)],
+    )
+    analysis = ask(source["id"], "How many customers have churned?")
+    findings = client.get(f"/api/analyses/{analysis['id']}/findings", headers=auth).json()
+    churned = int(pd.read_csv(data_dir / "saas_subscriptions.csv")["churn_date"].notna().sum())
+    churn = next(f for f in findings if "churn_date" in f["statement"])
+    assert f"{churned:,} non-null of" in churn["statement"]
+    assert churn["values"]["non_null"] == churned

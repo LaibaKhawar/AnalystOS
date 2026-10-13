@@ -179,7 +179,8 @@ def _column_finding(table: str, rows: int, column: ColumnMetadata, basis: str, s
         statement = (
             f"Column {name} in {table}{basis}: dates from {stats.get('min')} to {stats.get('max')} "
             f"({fmt_number(stats.get('span_days'))} days, {stats.get('granularity')} grain), "
-            f"{stats.get('missing_pct', 0)}% missing"
+            f"{fmt_number(stats.get('count'))} non-null of {fmt_number(rows)} rows "
+            f"({stats.get('missing_pct', 0)}% missing)"
         )
         formula = None
     else:
@@ -192,7 +193,8 @@ def _column_finding(table: str, rows: int, column: ColumnMetadata, basis: str, s
         )
         statement = (
             f"Column {name} in {table}{basis}: {fmt_number(stats.get('distinct_count'))} distinct values, "
-            f"{stats.get('missing_pct', 0)}% missing{shown}"
+            f"{fmt_number(stats.get('count'))} non-null of {fmt_number(rows)} rows "
+            f"({stats.get('missing_pct', 0)}% missing){shown}"
         )
         formula = None
         if column.is_pii:
