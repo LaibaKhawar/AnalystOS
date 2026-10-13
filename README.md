@@ -8,11 +8,22 @@ detects anomalies, breaks changes down into their drivers, draws charts and writ
 answer is matched against the query or computation that produced it before you see it, and one click shows the
 SQL, the formula and the rows behind each claim.
 
+**[Live demo](https://laibakhawar.github.io/AnalystOS/)** — a read-only replay of real analyses recorded from the
+running app with a local Qwen3 8B model (every answer, chart and evidence trail was produced by the backend; asking
+new questions needs the backend, see [Quick start](#quick-start-docker)).
+
+![Demo: question, plan, scope check, verified answer, chart and the evidence behind a number](docs/demo/demo.gif)
+
+<sub>The wait for the model is sped up 24x (the run took 512 s while a benchmark shared the laptop GPU);
+[full-quality MP4](docs/demo/demo.mp4).</sub>
+
 | Analysis workspace | Evidence for one claim |
 |---|---|
 | ![Workspace](docs/screenshots/workspace.png) | ![Evidence drawer](docs/screenshots/evidence.png) |
 | **Dataset explorer** | **Evaluation dashboard** |
 | ![Explorer](docs/screenshots/explorer.png) | ![Evaluations](docs/screenshots/evaluations.png) |
+| **Scheduled analyses and alerts** | **One analysis traced in Jaeger** |
+| ![Schedules](docs/screenshots/schedules.png) | ![Trace](docs/screenshots/trace.png) |
 
 ![Landing page](docs/screenshots/landing.png)
 
@@ -23,7 +34,8 @@ SQL, the formula and the rows behind each claim.
 | Hallucinated numbers | The LLM never does arithmetic. Deterministic tools emit *findings* (values, formulas, entities, periods). The drafted answer is verified sentence by sentence; numbers that do not trace to a finding are removed, and the model gets one chance to restate them from evidence. |
 | Causation vs correlation | Contribution and correlation results are phrased as "largest contributor" and "associated with". Causal wording in facts is moved into interpretations and labelled as a hypothesis. |
 | Unsafe SQL | AST validation with sqlglot (single SELECT-family statement, no DML/DDL anywhere in the tree, no file/system functions, catalog and allowlist checks, PII columns count-only, complexity and row limits) plus read-only sessions on the database side. |
-| Untrusted code | Generated Python runs only in an ephemeral Docker container: no network, read-only filesystem, non-root, no capabilities, 1 CPU / 512 MB / 30 s, empty environment. |
+| Untrusted code | Generated Python runs only in an ephemeral Docker container: no network, read-only filesystem, non-root, no capabilities, 1 CPU / 512 MB / 30 s, empty environment (optionally under gVisor with `SANDBOX_RUNTIME=runsc`), or in a Modal sandbox on hosts without Docker. |
+| Right numbers, wrong question | The scope check catches plans that add filters the user never asked for, or drop a period the user named; verification refuses a claim about "2026" backed by a number computed over all years. |
 | Prompt injection in data | Dataset content is fenced as untrusted data, sanitized, flagged when it looks like instructions, and the model has no tool that can reach secrets. |
 | Failures | Errors are classified; misspelled identifiers are corrected deterministically, other recoverable errors go through a bounded LLM repair with schema hints, identical retries are refused. |
 | Trust | Plans, steps, tool calls, SQL, Python, findings, claims and evidence are stored and browsable. Model reasoning is never stored or shown. |
@@ -37,8 +49,16 @@ SQL, the formula and the rows behind each claim.
   constant columns, IQR outliers, likely identifiers, metrics, dimensions, time columns, PII and prompt-injection flags.
 - **Semantic layer**: business meaning per column (revenue, cost, region, product, customer, segment, channel,
   percentages...) with confidence, alternatives, an uncertainty marker below 0.6, and user overrides.
-- **Agent**: plan, execute, observe, revise loop over 17 typed tools, with conversation memory for follow-ups and
-  clarifying questions when a request is ambiguous.
+- **Agent**: plan, execute, observe, revise loop over 18 typed tools, with conversation memory for follow-ups and
+  clarifying questions when a request is ambiguous. A **scope check** compares the plan with the question before
+  anything runs: filters or time windows nobody asked for, and periods the question names but no step applies, are
+  sent back to the planner once; anything left is shown as an explicit assumption.
+- **Fast path**: simple whole-table statistics ("What is the average revenue?") are answered from the profile
+  computed at upload with zero model calls, and still pass the verifier.
+- **Multi-table sources**: declared foreign keys plus relationships inferred from the data (a key column whose
+  values are at least 90% contained in another table's key) are given to the planner and shown in the explorer.
+- **Saved metrics**: define "average order value = SUM(revenue) / COUNT(*)" once per source (validated: must
+  aggregate, known columns only, passes the SQL validator); the agent reuses the definition instead of guessing.
 - **Statistics**: descriptive statistics with confidence intervals, Welch t-test, Mann-Whitney, Pearson/Spearman
   with p-values, trend slope, period-over-period comparison, contribution analysis, volume vs price decomposition.
 - **Anomaly detection**: z-score, IQR, seasonal rolling baseline (log scale for noisy non-negative metrics),
@@ -50,7 +70,15 @@ SQL, the formula and the rows behind each claim.
 - **Observability**: structured JSON logs with request, user, analysis and dataset ids; Prometheus metrics for
   analysis, tool, LLM and query latency, retries, blocked SQL and sandbox outcomes; per-analysis token and cost
   accounting with a configurable price table.
-- **Evaluation**: deterministic benchmark datasets with computed ground truth, 36 cases, an evaluation dashboard.
+- **Teams**: admin / analyst / viewer roles, sharing a source with another user as viewer or analyst, rotating
+  refresh tokens with reuse detection, Redis rate limits on login and questions.
+- **Scheduled analyses and alerts**: re-run a question every N minutes in its own conversation; anomalies at or
+  above a severity threshold (or a failed run) raise an in-app alert and, optionally, a webhook (HTTPS only, private
+  and metadata addresses blocked).
+- **Tracing**: OpenTelemetry spans for analysis, planning, each tool, LLM call, SQL query and sandbox run, exported to
+  Jaeger; a provisioned Grafana dashboard over the Prometheus metrics.
+- **Evaluation**: 67 cases on five datasets (four generated with computed ground truth, plus the real multi-table
+  Chinook database), repeated runs with spread, per-model comparison, and an evaluation dashboard.
 
 ## Architecture
 
@@ -62,8 +90,11 @@ flowchart LR
   ORC <--> LLM[(OpenAI-compatible LLM<br/>Ollama, OpenAI, Azure, vLLM)]
   ORC --> T[Typed tools]
   T --> V[SQL validator] --> D[(Dataset DuckDB / customer DB<br/>read-only)]
-  T --> S[[Docker sandbox<br/>no network]]
+  T --> S[[Sandbox: Docker no network,<br/>optional gVisor, or Modal]]
   API & W --> PG[(PostgreSQL + pgvector<br/>metadata, provenance, evals)]
+  B[Celery beat] -- due schedules --> Q
+  API & W -. OTLP traces .-> J[(Jaeger)]
+  API & W -. metrics .-> P[(Prometheus)] --> G[Grafana]
 ```
 
 Details: [architecture](docs/architecture.md), [agent workflow](docs/agent-workflow.md),
@@ -83,54 +114,84 @@ trail but never reach the answer or the report.
 
 ## Evaluation results
 
-Measured, not estimated: 36 benchmark cases with computed ground truth ([methodology](docs/evaluation.md)), run
-through the same orchestrator, tools, sandbox and verifier as the app. Full per-case output:
-[`backend/evals/results/evr_b4bb4998b582436f.md`](backend/evals/results/evr_b4bb4998b582436f.md).
+Measured, not estimated: 67 benchmark cases on five datasets ([methodology](docs/evaluation.md)), run through the
+same orchestrator, tools, sandbox and verifier as the app, twice, to show run-to-run spread. Four datasets are
+generated with ground truth computed by pandas; the fifth is the real, multi-table
+[Chinook](backend/evals/data/CHINOOK_LICENSE.md) database connected as SQL. Per-case output:
+[run 1](backend/evals/results/evr_ed59b7733fd14f64.md), [run 2](backend/evals/results/evr_4d53a541247d4981.md),
+[summary](backend/evals/results/summary_20261013T002823.md).
 
-Model: Qwen3 8B (Q4, 16K context) served locally by Ollama on an Apple M4 Pro laptop, no other GPU load.
+Model: Qwen3 8B (Q4, 16K context) served locally by Ollama on an Apple M4 Pro laptop, one case at a time.
 
-| Metric | Result | Target |
+| Metric | Mean of 2 runs (range) | Target |
 |---|---|---|
-| Overall pass rate | **94.4%** (34 / 36) | |
-| Numerical accuracy | **94.4%** | > 95% (missed by one case) |
-| Entity accuracy | 92.3% | |
-| SQL / computation accuracy | 93.3% | |
-| Analysis correctness (expected columns used) | 100% | |
+| Overall pass rate | **93.3%** (92.5% to 94.0%; 62 and 63 of 67) | |
+| Numerical accuracy | 93.9% (same in both runs) | > 95% (missed) |
+| Entity accuracy | 92.6% (same in both runs) | |
+| Analysis correctness (expected columns used) | 97.9% | |
 | Chart correctness | 100% | |
-| Unsupported numeric claims, model first drafts | 4.0% (caught and removed) | |
-| Unsupported numeric claims, final answers | **0%** | < 2% |
-| Tool success rate | 88.5% | |
-| First-pass step success | 90.7% | |
-| Retry recovery | **100%** (5 of 5 recoverable failures) | > 90% |
-| Unsafe SQL executed | **0** | 0 |
-| Safety cases (destructive SQL, prompt injection, env-var exfiltration) | 4 / 4 | |
-| Latency p50 / p95 | 74.6 s / 190.3 s | |
-| LLM calls / tokens per task | 2.42 calls, 5,807 in / 2,468 out | |
+| Unsupported numeric claims, model first drafts | 2.4% (1.8% to 2.9%), caught and removed | |
+| Unsupported numeric claims, final answers | **0%** in both runs | < 2% |
+| Retry recovery | 91.7% (100% and 83.3%; 11 and 18 recoverable tool failures) | > 90% |
+| Unsafe SQL executed | **0** in both runs | 0 |
+| Safety cases (destructive SQL, prompt injection, env-var exfiltration) | 5 / 5 in both runs | |
+| Fast-path cases (answered from the profile) | 2 / 2, zero model calls, 0.1 s | |
+| Multi-table (Chinook, CRM) | 13 / 14 and 12 / 14 | |
+| Latency p50 / p95 | 78 s / 286 s | |
+| LLM calls / tokens per task | 2.7 calls, about 9,300 in / 3,100 out | |
 | Cost per task | $0.00 (local model) | |
 
-| Category | Passed |
-|---|---|
-| numeric | 14 / 15 |
-| entity | 7 / 8 |
-| drivers (root cause) | 2 / 2 |
-| anomaly, chart, clarification | 3 / 3 |
-| recovery (wrong column names in the question) | 2 / 2 |
-| multi-turn follow-ups | 2 / 2 |
-| safety | 4 / 4 |
+**Every failure, and why.** Nine failures over the two runs, in six cases:
 
-**The two failures.** `saas_expanded`: the model added a filter nobody asked for (it excluded churned customers),
-so it answered 152 instead of 189; the number is real for a different question, which number verification cannot
-catch. The planner prompt now forbids unrequested filters (this change was made after the run and is not yet
-reflected in the numbers). `mkt_cost_per_conversion`: an intermittent crash; the same case passed on re-run, and
-unexpected errors now record their exception type so a repeat can be diagnosed.
+| Case | Runs failed | What happened |
+|---|---|---|
+| `sales_gross_profit_2025` | 2 / 2 | The model computes SUM(revenue) minus SUM(cost); the ground truth sums revenue minus cost per row, which skips rows with a missing cost. Both are defensible definitions; the case was not tuned. |
+| `sales_consumer_share_2025` | 2 / 2 | A bug: a segment with a missing value produced NaN, which Postgres rejects in JSON, and the analysis failed. Fixed after the runs (NaN is stored as null) so that every final run used the same code; not reflected in these numbers. |
+| `chinook_support_rep` | 2 / 2 | Correct person, short name: the model grouped by last name and answered "Peacock"; the grader expects "Jane Peacock". Left as a failure rather than loosening the grader after the fact. |
+| `mkt_highest_ctr` | 1 / 2 | Click-through rate needs a ratio of two columns, which the aggregate tools cannot express; the model did not fall back to SQL and said it could not compute the rate. |
+| `chinook_top_genre_tracks` | 1 / 2 | The model asked for `Genre.Name` from a related table; segment tools do not follow relationships, so the answer named "GenreId 1" instead of "Rock". |
+| `clarify_numbers` | 1 / 2 | "Show me the numbers." was answered with a verified dataset overview instead of a clarifying question. |
 
-**What we learned along the way.** Ollama's default context window is 4,096 tokens and it truncates longer prompts
-silently. Before raising it to 16K (see `ollama/`), the 8B model invented table and column names and failed most
-plans; afterwards, on the same 8-case subset, it passed 8/8 at a median of 84 s. A 14B model passed every case it
-finished but took 2 to 8 minutes per case on this laptop, so the 8B model is the default.
+**Found and fixed by this benchmark before the final runs** (each with a regression test): the plan dropping a
+period the question named ("in 2026"), verification accepting a number computed over all years for a sentence
+about one year, monthly breakdowns ranking the best single month instead of the period total, a count question with
+no metric failing validation, profile statements omitting non-null counts, and a chart crash when the series column
+repeated the x axis.
 
-**Latency.** Almost all of the time is LLM generation on a laptop GPU; tools run in milliseconds. A GPU deployment
-on Modal is included (`deploy/modal/llm_server.py`, vLLM, OpenAI-compatible); point `LLM_BASE_URL` at it.
+**Infrastructure lessons from running it.** Ollama's default 4,096-token context silently truncates longer prompts
+(the 8B model invented column names until the context was raised to 16K, see `ollama/`). On a laptop, idle sleep
+and memory pressure stall local inference mid-request; final runs were made with the machine kept awake and nothing
+else using the GPU.
+
+### Model comparison
+
+Same 67 cases, same code, three free models served locally by Ollama (16K context). Qwen3 4B is the
+`qwen3:4b-instruct-2507` build: the default `qwen3:4b` tag is now a thinking-only model that cannot return plain
+JSON, so that run was stopped and replaced. The Qwen3 4B run was made after the NaN fix described above; the other
+runs were not.
+
+| Metric | analystos-qwen3-8b (2 runs) | analystos-qwen3-4b-instruct (1 run) | analystos-llama3.1-8b (1 run) |
+|---|---|---|---|
+| Overall pass rate | **93.3% (92.5% to 94.0%)** | 88.1% | 67.2% |
+| Numerical accuracy | **93.9%** | 81.8% | 63.6% |
+| Entity accuracy | **92.6%** | **92.6%** | 66.7% |
+| Computation accuracy | **92.4% (91.5% to 93.2%)** | 84.8% | 67.8% |
+| Unsupported numbers in drafts | **2.4% (1.8% to 2.9%)** | 8.6% | 12.8% |
+| Unsupported numbers in final answers | **0.0%** | **0.0%** | **0.0%** |
+| First-pass step success | **87.6% (85.0% to 90.3%)** | 83.4% | 72.4% |
+| Retry recovery | **91.7% (83.3% to 100.0%)** | 55.9% | 66.7% |
+| Safety cases passed | **100.0%** | **100.0%** | **100.0%** |
+| Latency p50 | 78.1s (75.4s to 80.9s) | **26.9s** | 30.7s |
+| Latency p95 | 285.6s (235.7s to 335.4s) | **75.6s** | 95.0s |
+| LLM calls per task | **2.73 (2.52 to 2.93)** | 3.37 | 3.52 |
+| Cost per task | **$0.0000** | **$0.0000** | **$0.0000** |
+
+What it shows: **model quality moves pass rate, not trustworthiness.** Llama 3.1 8B drafted five times more
+unsupported numbers than Qwen3 8B (12.8% vs 2.4%) and passed far fewer cases, yet 0% of the numbers in its final
+answers lacked evidence, and it executed no unsafe SQL. A weaker model makes AnalystOS answer less, not answer
+wrongly. The small Qwen3 4B is three times faster than the 8B and loses about five points of pass rate, mostly on
+numeric and multi-table questions.
+
 
 ## Quick start (Docker)
 
@@ -187,8 +248,10 @@ All settings are documented in [`.env.example`](.env.example). Required: `SECRET
 make test        # backend unit + integration (Postgres, Docker sandbox), frontend unit tests
 make lint        # ruff + eslint
 make typecheck   # mypy + tsc
-cd frontend && npm run e2e   # Playwright against a running stack
-make eval        # benchmark suite against the configured LLM
+cd frontend && npm run e2e:ci   # Playwright, deterministic: starts its own backend with a rule-based LLM stand-in
+cd frontend && npm run e2e      # Playwright against a running stack and the real LLM
+make eval        # benchmark suite against the configured LLM (add --repeat N for spread)
+make compare-models             # the same suite on two more free local models
 ```
 
 Integration tests drive the real API, orchestrator, tools, verifier and sandbox; only the LLM is replaced by a
@@ -198,19 +261,16 @@ scripted test double (in `backend/tests`, never in production code paths).
 
 | Suite | Result |
 |---|---|
-| Backend unit tests | 141 passed |
-| Backend integration tests (real API, orchestrator, tools, verifier, Postgres, Docker sandbox; scripted LLM) | 19 passed |
-| Backend coverage | 83% |
-| Frontend unit tests (Vitest) | 50 passed |
-| End-to-end (Playwright: register, upload, profile, ask, progress, chart, evidence, report, download) | passed (see note) |
-| Lint / format / types | ruff, mypy (strict defs), ESLint, Prettier, tsc: clean |
+| Backend unit tests | 195 passed |
+| Backend integration tests (real API, orchestrator, tools, verifier, Postgres, Docker sandbox; scripted LLM) | 52 passed |
+| Backend coverage | 84% |
+| Frontend unit tests (Vitest) | 122 passed |
+| End-to-end, deterministic (`npm run e2e:ci`: real backend, rule-based LLM stand-in; register, upload, profile, ask, evidence, report, sharing, roles, saved metrics, schedules) | 2 / 2 passed |
+| End-to-end with the real LLM (`npm run e2e` against a running stack) | passed |
+| Lint / format / types | ruff, mypy, ESLint, Prettier, tsc: clean |
 | Security | Bandit clean, gitleaks clean on full history |
-| Docker | `docker compose up --build` verified end to end, including a sandboxed Python analysis and PDF/HTML/XLSX export |
-| CI (GitHub Actions) | all jobs green |
-
-Note on the end-to-end test: it is driven by the real LLM. When the first answer has no chart it asks one
-follow-up for a chart and records an annotation; the backend now always keeps full rankings so single-row answers
-also produce a chart.
+| Benchmark | 67 cases × 2 runs, see [Evaluation results](#evaluation-results) |
+| CI (GitHub Actions, 7 jobs incl. Postgres + Docker sandbox and Playwright) | all green |
 
 ## Security
 
@@ -232,7 +292,8 @@ On the SaaS data: "Which plan has the highest churn rate, and do churned custome
 
 [Architecture](docs/architecture.md) · [Agent workflow](docs/agent-workflow.md) · [Tools](docs/tools.md) ·
 [Database schema](docs/database-schema.md) · [Security](docs/security.md) · [Evaluation](docs/evaluation.md) ·
-[Deployment](docs/deployment.md) · [Troubleshooting](docs/troubleshooting.md) · [API](docs/api.md)
+[Deployment](docs/deployment.md) · [Troubleshooting](docs/troubleshooting.md) · [API](docs/api.md) ·
+[Model comparison](docs/model-comparison.md) · **[Case study](docs/case-study.md)**
 
 ## Known limitations
 
@@ -246,21 +307,30 @@ On the SaaS data: "Which plan has the highest churn rate, and do churned custome
   this auditable, not impossible.
 - **Entity checks use known category values** (top values of dimension columns and finding entities). Entities
   outside that set are not recognised as conflicts.
+- **Ratio metrics need SQL or a saved metric.** The aggregate tools take one column and one aggregation, so a
+  click-through rate (clicks / impressions) needs `execute_sql` or a saved metric; a small model does not always
+  choose either.
+- **Segment tools do not follow relationships.** Grouping tracks by genre *name* needs a join to the genre table;
+  the aggregate and segment tools group by columns of one table, so the model has to write SQL for that.
 - **Small integers are not verified** (counts up to 12 such as "top 3" are treated as wording, not claims).
 - **Sandbox host access.** In Docker Compose the worker uses the host Docker socket to start sandboxes; generated code
-  never runs in the worker, but production deployments should use a rootless daemon or gVisor/Kata.
-- **One data source per conversation**; no cross-source joins.
+  never runs in the worker, but production deployments should use a rootless daemon, gVisor (`SANDBOX_RUNTIME=runsc`)
+  or the Modal backend.
+- **One data source per conversation**; tables within a source can be joined, sources cannot.
 - **Excel**: very large workbooks are read in streaming mode, where merged cells are not expanded. Formulas are read
   as their cached values.
-- **Synthetic benchmark.** The evaluation uses generated data with known answers; it measures the system's mechanics,
-  not accuracy on arbitrary real-world data.
+- **Mostly synthetic benchmark.** Four of the five evaluation datasets are generated with known answers; the fifth is
+  the real Chinook database. It measures the system's mechanics, not accuracy on arbitrary real-world data.
+- **Hosted models not yet measured.** The comparison covers free local models only; the tooling runs the same suite
+  against any OpenAI-compatible endpoint (`evals.run --model ... --base-url ...`).
 
 ## Future improvements
 
-1. Hosted-model evaluation (GPT-4o-mini, Claude Haiku) alongside the local model to separate model limits from system limits.
-2. Learned plan templates for common question shapes (period comparison, ranking, trend) to reduce LLM calls and latency.
+1. Hosted-model evaluation (GPT-4o-mini, Claude Haiku) next to the local models, to separate model limits from system limits.
+2. Learned plan templates for common question shapes (period comparison, ranking, trend), extending the fast path.
 3. Semantic verification: an NLI check that a sentence's wording matches the finding it cites, on top of number matching.
-4. gVisor runtime for sandbox containers and a separate sandbox service instead of the Docker socket.
+4. A separate sandbox service instead of the Docker socket.
 5. Snowflake, BigQuery and SQL Server engines (dialects already supported by the validator).
-6. Shared workspaces, roles and an audit export for teams.
-7. Scheduled analyses with alerting on detected anomalies.
+6. Cross-source questions (joining an uploaded file with a database table).
+7. Ratio metrics (`{numerator, denominator}`) in the aggregate tools, and group-by columns reached through declared
+   or inferred relationships (`Genre.Name` from `Track`), the two gaps behind most remaining benchmark failures.

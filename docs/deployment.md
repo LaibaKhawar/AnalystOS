@@ -69,6 +69,20 @@ The demo account is seeded with the `analyst` role (its password is public, so i
 ephemeral (visitor uploads vanish on restart; the demo datasets are re-seeded), and schedules need the paid `worker`
 and `beat` background services (same image, commands as in `docker-compose.yml`).
 
+### Free static demo (GitHub Pages)
+
+The [live demo](https://laibakhawar.github.io/AnalystOS/) costs nothing to host: it is the frontend built in replay
+mode (`npm run build:replay`), serving API responses recorded from a running stack instead of calling a backend.
+
+```bash
+node frontend/scripts/showcase.mjs        # ask the showcase questions through the real API and model
+node frontend/scripts/record-replay.mjs   # browse the app as the demo user, save frontend/public/replay.json
+git push                                  # .github/workflows/pages.yml builds and publishes it
+```
+
+Every answer, chart, claim and evidence item in the replay was produced by the backend and model at recording time.
+Writes (asking, uploading, sharing) are refused with a message, and views that were not recorded say so.
+
 ### Frontend behind any backend
 
 The frontend image renders its nginx config from a template at start: `BACKEND_URL` (default
