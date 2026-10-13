@@ -42,10 +42,11 @@ models:           ## create the 16K-context Ollama models used by default
 	ollama create analystos-qwen3-14b -f ollama/Modelfile.qwen3-14b
 	ollama create analystos-qwen3-8b -f ollama/Modelfile.qwen3-8b
 
+# Plain `qwen3:4b` is now a thinking-only build that cannot return plain JSON; the instruct build is used instead.
 compare-models:   ## free model comparison: two more local models through Ollama (one run each)
-	ollama pull qwen3:4b && ollama create analystos-qwen3-4b -f ollama/Modelfile.qwen3-4b
+	ollama pull qwen3:4b-instruct-2507-q4_K_M && ollama create analystos-qwen3-4b-instruct -f ollama/Modelfile.qwen3-4b
 	ollama pull llama3.1:8b && ollama create analystos-llama3.1-8b -f ollama/Modelfile.llama3.1-8b
-	cd backend && .venv/bin/python -m evals.run --model analystos-qwen3-4b --notes "qwen3-4b"
+	cd backend && .venv/bin/python -m evals.run --model analystos-qwen3-4b-instruct --notes "qwen3-4b-instruct"
 	cd backend && .venv/bin/python -m evals.run --model analystos-llama3.1-8b --notes "llama3.1-8b"
 
 eval:             ## run the evaluation suite against the configured LLM

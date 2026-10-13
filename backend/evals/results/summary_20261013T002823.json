@@ -1,0 +1,169 @@
+{
+  "runs": [
+    "evr_ed59b7733fd14f64",
+    "evr_4d53a541247d4981"
+  ],
+  "model": "analystos-qwen3-8b",
+  "stats": {
+    "pass_rate": {
+      "mean": 0.93285,
+      "std": 0.010535891039679576,
+      "min": 0.9254,
+      "max": 0.9403,
+      "values": [
+        0.9403,
+        0.9254
+      ]
+    },
+    "numerical_accuracy": {
+      "mean": 0.9394,
+      "std": 0.0,
+      "min": 0.9394,
+      "max": 0.9394,
+      "values": [
+        0.9394,
+        0.9394
+      ]
+    },
+    "entity_accuracy": {
+      "mean": 0.9259,
+      "std": 0.0,
+      "min": 0.9259,
+      "max": 0.9259,
+      "values": [
+        0.9259,
+        0.9259
+      ]
+    },
+    "sql_execution_accuracy": {
+      "mean": 0.9237500000000001,
+      "std": 0.011950104602052671,
+      "min": 0.9153,
+      "max": 0.9322,
+      "values": [
+        0.9153,
+        0.9322
+      ]
+    },
+    "analysis_correctness": {
+      "mean": 0.9787,
+      "std": 0.0,
+      "min": 0.9787,
+      "max": 0.9787,
+      "values": [
+        0.9787,
+        0.9787
+      ]
+    },
+    "unsupported_claim_rate_draft": {
+      "mean": 0.0237,
+      "std": 0.008061017305526642,
+      "min": 0.018,
+      "max": 0.0294,
+      "values": [
+        0.018,
+        0.0294
+      ]
+    },
+    "unsupported_claim_rate_final": {
+      "mean": 0.0,
+      "std": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "values": [
+        0.0,
+        0.0
+      ]
+    },
+    "tool_success_rate": {
+      "mean": 0.8456,
+      "std": 0.06250823945689082,
+      "min": 0.8014,
+      "max": 0.8898,
+      "values": [
+        0.8898,
+        0.8014
+      ]
+    },
+    "first_pass_success_rate": {
+      "mean": 0.87635,
+      "std": 0.03726452736853103,
+      "min": 0.85,
+      "max": 0.9027,
+      "values": [
+        0.9027,
+        0.85
+      ]
+    },
+    "retry_recovery_rate": {
+      "mean": 0.91665,
+      "std": 0.11787470042379744,
+      "min": 0.8333,
+      "max": 1.0,
+      "values": [
+        1.0,
+        0.8333
+      ]
+    },
+    "safety_pass_rate": {
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "values": [
+        1.0,
+        1.0
+      ]
+    },
+    "latency_p50_ms": {
+      "mean": 78138,
+      "std": 3935.7563440843237,
+      "min": 75355,
+      "max": 80921,
+      "values": [
+        75355,
+        80921
+      ]
+    },
+    "latency_p95_ms": {
+      "mean": 285556.5,
+      "std": 70482.2826283315,
+      "min": 235718,
+      "max": 335395,
+      "values": [
+        235718,
+        335395
+      ]
+    },
+    "avg_cost_usd": {
+      "mean": 0.0,
+      "std": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "values": [
+        0.0,
+        0.0
+      ]
+    },
+    "avg_llm_calls": {
+      "mean": 2.725,
+      "std": 0.28991378028648457,
+      "min": 2.52,
+      "max": 2.93,
+      "values": [
+        2.52,
+        2.93
+      ]
+    }
+  },
+  "unstable": [
+    "chinook_top_genre_tracks",
+    "clarify_numbers",
+    "mkt_highest_ctr"
+  ],
+  "always_fail": [
+    "chinook_support_rep",
+    "sales_consumer_share_2025",
+    "sales_gross_profit_2025"
+  ]
+}
