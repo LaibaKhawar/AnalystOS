@@ -2,41 +2,25 @@
 # Vercel (frontend/vercel.json rewrites /api here); the model is any OpenAI-compatible API (Groq's free tier by
 # default). Fill the `sync: false` values in the Render dashboard, or create the services through the Render API.
 #
+# PostgreSQL (pgvector) and Redis run inside the same container (deploy/render/Dockerfile), so no separate free
+# database is needed (Render allows one per workspace, and it expires after 30 days).
 # Free-plan limits: the service sleeps after 15 idle minutes (the next request waits for it to start), it has 512 MB
-# of memory, its disk is ephemeral (the demo datasets are re-seeded at every start), and the free database expires
-# after 30 days. There is no Docker daemon or isolation layer for generated Python, so the Python tool is disabled
+# of memory (measured peak about 420 MB with an analysis and a PDF report), and its disk is ephemeral: every start
+# re-creates the database with the demo account and sample datasets. There is no Docker daemon or isolation layer for generated Python, so the Python tool is disabled
 # (SANDBOX_ENABLED=false); SQL, statistics, anomaly detection, charts, verification and reports all work.
 
-databases:
-  - name: analystos-db
-    databaseName: analystos
-    user: analystos
-    plan: free
-
 services:
-  - type: keyvalue
-    name: analystos-redis
-    plan: free
-    ipAllowList: []  # private network only
-
   - type: web
     name: analystos-api
     runtime: docker
     plan: free
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: >-
-      sh -c "alembic upgrade head
-      && python scripts/seed_demo.py --role analyst
-      && exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'"
+    region: virginia
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
     healthCheckPath: /api/health
     envVars:
       - key: ENVIRONMENT
         value: production
-      - key: DATABASE_URL
-        fromDatabase: {name: analystos-db, property: connectionString}
-      - key: REDIS_URL
-        fromService: {type: keyvalue, name: analystos-redis, property: connectionString}
       - key: SECRET_KEY
         generateValue: true
       - key: ENCRYPTION_KEY  # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

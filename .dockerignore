@@ -1,4 +1,14 @@
-# Repository-root build context (used by the sandbox image): send only what the image needs.
+# Repository-root build context, used by the sandbox image and the Render image: send only what they need.
 **
 !sandbox/Dockerfile
 !backend/app/services/sandbox/runner.py
+!deploy/render/
+!backend/app/
+!backend/alembic/
+!backend/alembic.ini
+!backend/scripts/
+!backend/evals/data/
+!backend/requirements.lock
+!backend/pyproject.toml
+**/__pycache__
+**/*.pyc
